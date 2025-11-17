@@ -46,3 +46,25 @@ python gsc_keyword_report.py --keywords allKeyWord_normalized.csv --start-date 2
 - 幫你把 `allKeyWord.csv` 放到 repo，或
 - 幫你執行一次（請提供 property URL 與希望的日期範圍），
 請回覆我下一步。祝順利！
+
+新增 GUI 使用方式
+
+你可以用內建的簡易 GUI 來選擇 `property`、`start-date` 與 `end-date`，並選擇輸出為 CSV 或 Excel（或兩者）：
+
+啟動 GUI：
+```powershell
+python run_gui.py
+```
+
+GUI 功能說明：
+- `Property`：輸入 Search Console 的完整 property URL（例如：`https://pm.shiny.com.tw/`）。
+- `Start date` / `End date`：查詢期間（格式 YYYY-MM-DD）。
+- `Keywords file`：預設使用 `allKeyWord_normalized.csv`（若尚未產生請先執行 `normalize_keywords.py`）。
+- `Use mock data`：勾選會用模擬資料（不需 GSC 認證），方便先測試整套流程。
+- `CSV` / `Excel (.xlsx)`：選擇輸出格式；若要輸出 Excel，請先安裝 `pandas` 與 `openpyxl`。
+
+若要我直接在本機執行真實查詢，請回覆以下資訊：
+- `property`（Search Console property URL）
+- `start-date` 與 `end-date`
+- 是否使用 repository 裡的 service account（`gsc-keyword-query-a73ecc893169.json`）或上傳 OAuth `client_secret.json`
+
