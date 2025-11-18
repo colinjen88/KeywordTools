@@ -292,6 +292,16 @@ class App(tk.Tk):
                     path = alt
         except Exception:
             pass
+        # If running from PyInstaller bundle, and default keywords file exists inside the bundle, use that path
+        try:
+            if getattr(sys, 'frozen', False):
+                base = getattr(sys, '_MEIPASS', None) or os.path.dirname(sys.executable)
+                kws_name = os.path.basename(self.kws_var.get())
+                bundle_kws = os.path.join(base, kws_name)
+                if os.path.exists(bundle_kws):
+                    self.kws_var.set(bundle_kws)
+        except Exception:
+            pass
         rows = []
         header = []
         used_encoding = None
@@ -934,24 +944,82 @@ class App(tk.Tk):
                 outputs = []
                 sa_path = self.sa_var.get().strip() if hasattr(self, 'sa_var') else ''
                 # Decide output based on selected format
-                if fmt == 'CSV':
-                    out = self.get_export_filename('.csv')
-                    cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
-                    if sa_path:
-                        cmd.extend(['--service-account', sa_path])
-                    self.append_log('執行: ' + ' '.join(cmd))
-                    proc = subprocess.run(cmd, capture_output=True, text=True)
-                    self.append_log(proc.stdout)
-                    if proc.stderr:
-                        self.append_log(proc.stderr)
-                    outputs.append(out)
+                out_ext = '.csv' if fmt == 'CSV' else '.xlsx'
+                out = self.get_export_filename(out_ext)
+                # Build args for CLI
+                cli_args = ['--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
+                if sa_path:
+                    cli_args.extend(['--service-account', sa_path])
+
+                # Prefer importing and running the CLI module in-process (avoids new console windows)
+                # Try import and call main() even when frozen; fallback to subprocess if import is not possible.
+                try:
+                    import importlib, io
+                    module = importlib.import_module('gsc_keyword_report')
+                    imported_cli = True
+                except Exception:
+                    module = None
+                    imported_cli = False
+                if imported_cli:
+                    try:
+                        # run module.main() with replaced sys.argv to pass the CLI args
+                        old_argv = sys.argv
+                        sys.argv = [old_argv[0]] + cli_args
+                        buf_out = io.StringIO()
+                        buf_err = io.StringIO()
+                        old_stdout, old_stderr = sys.stdout, sys.stderr
+                        try:
+                            sys.stdout, sys.stderr = buf_out, buf_err
+                            try:
+                                module.main()
+                            except SystemExit as e:
+                                # main() may call sys.exit() on errors; capture and continue
+                                self.append_log(f'gsc_keyword_report exited with code: {getattr(e, "code", None)}')
+                        finally:
+                            sys.stdout, sys.stderr = old_stdout, old_stderr
+                            sys.argv = old_argv
+                        out_text = buf_out.getvalue()
+                        err_text = buf_err.getvalue()
+                        if out_text:
+                            self.append_log(out_text)
+                        if err_text:
+                            self.append_log(err_text)
+                        outputs.append(out)
+                    except Exception as e:
+                        self.append_log('無法以模組方式執行 CLI，改為 subprocess: ' + str(e))
+                        # fall back to subprocess
+                        interpreter = sys.executable
+                        script_path = SCRIPT
+                        if not os.path.exists(script_path):
+                            # fall back to bundled path or absolute
+                            candidate = os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)), SCRIPT) if getattr(sys, 'frozen', False) else None
+                            if candidate and os.path.exists(candidate):
+                                script_path = candidate
+                        cmd = [interpreter, script_path] + cli_args
+                        # hide console window on Windows
+                        kwargs = {'capture_output': True, 'text': True}
+                        if os.name == 'nt':
+                            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                        self.append_log('執行: ' + ' '.join(cmd))
+                        proc = subprocess.run(cmd, **kwargs)
+                        self.append_log(proc.stdout)
+                        if proc.stderr:
+                            self.append_log(proc.stderr)
+                        outputs.append(out)
                 else:
-                    out = self.get_export_filename('.xlsx')
-                    cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
-                    if sa_path:
-                        cmd.extend(['--service-account', sa_path])
+                    # Frozen exe: use system python (avoids relaunching the same exe) and hide created console
+                    interpreter = os.environ.get('PYTHON_EXE', 'python')
+                    script_path = SCRIPT
+                    if not os.path.exists(script_path):
+                        candidate = os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)), SCRIPT)
+                        if os.path.exists(candidate):
+                            script_path = candidate
+                    cmd = [interpreter, script_path] + cli_args
+                    kwargs = {'capture_output': True, 'text': True}
+                    if os.name == 'nt':
+                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
                     self.append_log('執行: ' + ' '.join(cmd))
-                    proc = subprocess.run(cmd, capture_output=True, text=True)
+                    proc = subprocess.run(cmd, **kwargs)
                     self.append_log(proc.stdout)
                     if proc.stderr:
                         self.append_log(proc.stderr)

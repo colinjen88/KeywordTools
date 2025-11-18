@@ -47,6 +47,8 @@ $pyArgs += "--hidden-import"; $pyArgs += "tkinter"
 $pyArgs += "--hidden-import"; $pyArgs += "tkinter.ttk"
 $pyArgs += "--hidden-import"; $pyArgs += "pandas"
 $pyArgs += "--hidden-import"; $pyArgs += "openpyxl"
+# ensure CLI module is included in analysis so we can import it inside the exe
+$pyArgs += "--hidden-import"; $pyArgs += "gsc_keyword_report"
 
 if ($IconPath -and (Test-Path $IconPath)) {
     Write-Info "Using icon: $IconPath"
