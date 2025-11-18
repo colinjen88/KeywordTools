@@ -19,6 +19,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import csv
+import tkinter.font as tkfont
 from datetime import date, timedelta
 
 # Try to apply ttkbootstrap theme for modern dark UI. If not available,
@@ -26,7 +27,7 @@ from datetime import date, timedelta
 USE_TTB = False
 try:
     import ttkbootstrap as tb
-    TB_STYLE = tb.Style(theme='cyborg')
+    TB_STYLE = tb.Style(theme='superhero')
     USE_TTB = True
 except Exception:
     TB_STYLE = None
@@ -266,6 +267,11 @@ class App(tk.Tk):
             tree.insert('', tk.END, values=r)
 
         self.tree = tree
+        # after populating, enable table interactions (sorting, right-click, auto-width)
+        try:
+            self.setup_table_features()
+        except Exception:
+            pass
 
     def export_csv(self):
         # unified export: use selected format
@@ -286,6 +292,140 @@ class App(tk.Tk):
                 messagebox.showinfo('已儲存', f'已儲存 CSV 到 {p}')
             except Exception as e:
                 messagebox.showerror('錯誤', str(e))
+
+    # ----- Table interactions: sorting, auto-width, filter, right-click -----
+    def setup_table_features(self):
+        # add column-sorting handlers
+        for col in self.current_columns:
+            try:
+                self.tree.heading(col, text=col, command=lambda c=col: self.sort_by_column(c, False))
+            except Exception:
+                pass
+
+        # enable right-click menu
+        self.tree.bind('<Button-3>', self.on_tree_right_click)
+
+        # auto adjust column widths
+        self.adjust_column_widths()
+
+        # add simple filter UI above table
+        try:
+            if getattr(self, 'filter_frame', None):
+                self.filter_frame.destroy()
+            self.filter_frame = ttk.Frame(self.table_frame)
+            self.filter_frame.grid(row= -1, column=0, sticky='ew', pady=(0,4))
+            ttk.Label(self.filter_frame, text='欄位篩選：').grid(row=0, column=0, sticky=tk.W)
+            self.filter_col_var = tk.StringVar(value=self.current_columns[0] if self.current_columns else '')
+            col_combo = ttk.Combobox(self.filter_frame, textvariable=self.filter_col_var, values=self.current_columns, state='readonly', width=12)
+            col_combo.grid(row=0, column=1, padx=4)
+            self.filter_val_var = tk.StringVar()
+            ttk.Entry(self.filter_frame, textvariable=self.filter_val_var, width=24).grid(row=0, column=2, padx=4)
+            ttk.Button(self.filter_frame, text='套用', command=self.apply_filter).grid(row=0, column=3, padx=4)
+            ttk.Button(self.filter_frame, text='清除', command=self.clear_filter).grid(row=0, column=4, padx=4)
+        except Exception:
+            pass
+
+    def sort_by_column(self, col, numeric=False):
+        # sort tree items by given column
+        try:
+            data = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
+            # try numeric
+            try:
+                data = [(float(v.replace(',','')) if v!='' else 0.0, k) for v, k in data]
+            except Exception:
+                pass
+            data.sort(reverse=False)
+            for index, (val, k) in enumerate(data):
+                self.tree.move(k, '', index)
+        except Exception as e:
+            self.append_log('排序失敗: ' + str(e))
+
+    def adjust_column_widths(self, padding=12):
+        # measure content width and set column widths
+        try:
+            f = tkfont.Font()
+            for i, col in enumerate(self.current_columns):
+                maxw = f.measure(col)
+                for r in self.current_rows:
+                    text = str(r[i]) if i < len(r) else ''
+                    w = f.measure(text)
+                    if w > maxw:
+                        maxw = w
+                self.tree.column(col, width=maxw + padding)
+        except Exception:
+            pass
+
+    def apply_filter(self):
+        col = self.filter_col_var.get()
+        val = self.filter_val_var.get().strip().lower()
+        if not col or val == '':
+            return
+        # filter current_rows and reload tree
+        try:
+            filtered = []
+            idx = self.current_columns.index(col)
+            for r in self.current_rows:
+                if idx < len(r) and val in str(r[idx]).lower():
+                    filtered.append(r)
+            # clear tree
+            for it in self.tree.get_children():
+                self.tree.delete(it)
+            for r in filtered:
+                self.tree.insert('', tk.END, values=r)
+            self.append_log(f'已套用篩選：{col} 包含 "{val}"（{len(filtered)} 筆）')
+        except Exception as e:
+            self.append_log('篩選失敗: ' + str(e))
+
+    def clear_filter(self):
+        try:
+            for it in self.tree.get_children():
+                self.tree.delete(it)
+            for r in self.current_rows:
+                self.tree.insert('', tk.END, values=r)
+            self.filter_val_var.set('')
+            self.append_log('已清除篩選')
+        except Exception as e:
+            self.append_log('清除篩選失敗: ' + str(e))
+
+    def on_tree_right_click(self, event):
+        # show context menu for copy cell / export row
+        try:
+            iid = self.tree.identify_row(event.y)
+            col = self.tree.identify_column(event.x)
+            if not iid:
+                return
+            # translate col '#1' -> index
+            col_index = int(col.replace('#','')) - 1
+            values = self.tree.item(iid, 'values')
+            cell_value = values[col_index] if col_index < len(values) else ''
+
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label='複製儲存格', command=lambda v=cell_value: self.copy_to_clipboard(v))
+            menu.add_command(label='匯出此列為 CSV', command=lambda v=values: self.export_row(v))
+            menu.tk_popup(event.x_root, event.y_root)
+        except Exception as e:
+            self.append_log('右鍵選單錯誤: ' + str(e))
+
+    def copy_to_clipboard(self, text):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(str(text))
+            self.append_log('已複製到剪貼簿')
+        except Exception as e:
+            self.append_log('複製失敗: ' + str(e))
+
+    def export_row(self, values):
+        try:
+            p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile='row_export.csv')
+            if not p:
+                return
+            with open(p, 'w', newline='', encoding='utf-8-sig') as fh:
+                writer = csv.writer(fh)
+                writer.writerow(self.current_columns)
+                writer.writerow(values)
+            self.append_log(f'已匯出列到 {p}')
+        except Exception as e:
+            self.append_log('匯出列失敗: ' + str(e))
         else:
             # Excel
             p = filedialog.asksaveasfilename(defaultextension='.xlsx', filetypes=[('Excel','*.xlsx')], initialfile=self.outbase_var.get() + '.xlsx')
