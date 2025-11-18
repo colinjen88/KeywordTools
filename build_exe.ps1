@@ -58,6 +58,8 @@ if ($IconPath -and (Test-Path $IconPath)) {
 # default include of sample CSV and keyword lists (do NOT include service account keys)
 $pyArgs += "--add-data"; $pyArgs += "allKeyWord_normalized.csv;."
 $pyArgs += "--add-data"; $pyArgs += "gsc_keyword_report_sample.csv;."
+# include the CLI script so frozen exe can spawn or import it
+$pyArgs += "--add-data"; $pyArgs += "gsc_keyword_report.py;."
 
 # optionally include a folder named 'assets' if it exists
 if (Test-Path .\assets) {
