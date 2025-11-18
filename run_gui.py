@@ -128,6 +128,10 @@ class App(tk.Tk):
         self.save_btn.grid(row=0, column=0, padx=(0,8))
         self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
         self.clear_btn.grid(row=0, column=1, padx=(0,8))
+        # autoload toggle
+        self.autoload_var = tk.BooleanVar(value=True)
+        self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV', variable=self.autoload_var)
+        self.autoload_cb.grid(row=0, column=3, padx=(8,8))
         # Run button bigger and styled
         self.run_btn_big = ttk.Button(btn_frame, text="執行報表", command=self.on_run, style='Big.TButton')
         self.run_btn_big.grid(row=0, column=2, padx=(12,8))
@@ -316,6 +320,12 @@ class App(tk.Tk):
     def _auto_load_if_needed(self, path):
         # Only auto-load if table is empty or the file is different from current loaded
         try:
+            # check autoload setting on main thread
+            try:
+                if hasattr(self, 'autoload_var') and not self.autoload_var.get():
+                    return
+            except Exception:
+                pass
             if not os.path.exists(path):
                 return
             if self.current_rows and os.path.abspath(path) == getattr(self, '_last_loaded_path', None):
