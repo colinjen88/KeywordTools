@@ -65,6 +65,10 @@ GUI 功能說明：
 
 補充說明：
 - 自動載入 CSV：在 GUI 右下的按鈕列中有一個勾選框 `自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）`。若勾選，GUI 會監控當前工作目錄（repo 根目錄）中最新的 `.csv` 檔案，當檔案新產生或修改時會自動載入表格顯示（適合在外部執行 CLI 並讓 GUI 自動顯示結果）。可取消勾選以避免自動載入。
+	- Note (CSV encoding): PowerShell's redirection operator `>` often writes files as UTF-16 LE by default. The GUI now tries multiple encodings (utf-8-sig, utf-8, utf-16, cp950, cp936, latin1) to detect file encoding and will log the detected encoding when auto-loading. To avoid ambiguity, prefer creating CSVs as UTF-8, for example:
+		```powershell
+		"query,clicks,impressions,position" | Out-File -FilePath .\latest.csv -Encoding utf8
+		```
 - 輸出格式位置：`輸出格式`下拉已移到按鈕列左側，用來選擇 Save 時匯出的格式（CSV 或 Excel）。
 - 快速區間按鈕：GUI 提供 `近7天`、`近30天`、`近1季`、`近1年` 與 `上個月` 等快捷按鈕；若使用快捷按鈕查詢，狀態欄會顯示預設名稱（例如 `查詢完成_近7天` 或 `查詢完成_上個月`）。
 - 結果表格說明：結果表格包含欄位 `關鍵字`、`排名`、`點擊`、`曝光` 與 `點擊率`（CTR），數值欄位會以右對齊並有額外右側 padding。表格支援點擊標題欄做雙向排序（點一下升冪、再點一下降冪），並在標題顯示箭頭 ▲/▼。排序後表格會重新套用交替列底色以維持清晰性。
