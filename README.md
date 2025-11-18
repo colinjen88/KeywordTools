@@ -65,6 +65,11 @@ GUI 功能說明：
 
 補充說明：
 - 自動載入 CSV：在 GUI 右下的按鈕列中有一個勾選框 `自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）`。若勾選，GUI 會監控當前工作目錄（repo 根目錄）中最新的 `.csv` 檔案，當檔案新產生或修改時會自動載入表格顯示（適合在外部執行 CLI 並讓 GUI 自動顯示結果）。可取消勾選以避免自動載入。
+- 認證與安全（變更）：為了防止不小心使用錯誤憑證或將 Service Account 金鑰一起 Commit，GUI/CLI 現在**強制**需要使用者明確選擇一個有效的 credential：
+	- GUI：請在 `Service account JSON（選填）` 欄位中選擇一個 JSON 檔案 (或使用 OAuth client)，若未提供會拒絕執行。
+	- CLI：請在 `--service-account` 或 `--oauth-client` 參數中指定。
+	- 注意：我們不再把 `GSC_SERVICE_ACCOUNT` 或 `GOOGLE_APPLICATION_CREDENTIALS` 當作自動 fallback（以避免意外在其他環境中使用不安全憑證）；你可把環境變數用於自動化 pipeline，但 GUI 會要求明確檔案路徑。
+	- 提示：若你選擇的 JSON 檔位於 repo 目錄（或 subfolder），GUI 會跳出警告，提醒你不要把金鑰加入版本控制。
 	- Note (CSV encoding): PowerShell's redirection operator `>` often writes files as UTF-16 LE by default. The GUI now tries multiple encodings (utf-8-sig, utf-8, utf-16, cp950, cp936, latin1) to detect file encoding and will log the detected encoding when auto-loading. To avoid ambiguity, prefer creating CSVs as UTF-8, for example:
 		```powershell
 		"query,clicks,impressions,position" | Out-File -FilePath .\latest.csv -Encoding utf8

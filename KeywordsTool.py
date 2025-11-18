@@ -27,11 +27,12 @@ QUERY_DAYS = 90  # 查詢過去 90 天的數據
 def authenticate_gsc():
     """使用 Service Account 認證連接 GSC API"""
     scopes = ['https://www.googleapis.com/auth/webmasters.readonly']
-    # 先嘗試從變數取值，若為 None 則嘗試讀取環境變數 `GSC_SERVICE_ACCOUNT`
-    sa_file = SERVICE_ACCOUNT_FILE or os.environ.get('GSC_SERVICE_ACCOUNT')
+    # 為了安全，不再自動使用環境變數作為 fallback。
+    # 使用者必須在呼叫時明確傳入 Service Account 檔案路徑，或在程式內將 SERVICE_ACCOUNT_FILE 設定為路徑。
+    sa_file = SERVICE_ACCOUNT_FILE
     if not sa_file or not os.path.exists(sa_file):
         raise RuntimeError(
-            "Service account 檔案未設定或找不到。請設定環境變數 `GSC_SERVICE_ACCOUNT` 指向 JSON 檔或在程式中指定路徑。"
+            "Service account 未設定或找不到：請在程式中指定 `SERVICE_ACCOUNT_FILE` 或透過 CLI/GUI 明確指定 service-account JSON 的路徑。"
         )
     credentials = Credentials.from_service_account_file(
         sa_file, scopes=scopes

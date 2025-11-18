@@ -53,7 +53,8 @@ def authenticate(service_account_file=None, delegated_user=None, oauth_client_fi
         creds = flow.run_local_server(port=0)
         return creds
 
-    print("找不到有效的 service account 或 OAuth client 檔。請參閱 README.md 設定認證。")
+    # For security: Do not auto-fallback to environment variable or ADC; require explicit selection.
+    print("找不到有效的 service account 或 OAuth client 檔（未提供 / 無效）。請在呼叫時明確指定 --service-account 或 --oauth-client，或使用 --mock。")
     sys.exit(1)
 
 

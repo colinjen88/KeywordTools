@@ -812,6 +812,22 @@ class App(tk.Tk):
         if not prop or not start or not end:
             messagebox.showerror('缺少參數', '請提供 property、開始日期與結束日期')
             return
+        # Security policy: require Service Account explicitly (do not use env var fallback)
+        sa_path = self.sa_var.get().strip() if hasattr(self, 'sa_var') else ''
+        if not sa_path:
+            # no service account provided -> show error and refuse to run
+            messagebox.showerror('缺少 Service Account', '為了安全，必須在此指定 Service Account JSON 檔案的路徑，或使用 OAuth。請選擇一個有效的憑證檔案。')
+            return
+        # if the file is inside repo, warn the user (avoid committing credentials)
+        try:
+            repo_root = os.path.abspath('.')
+            abs_sa_path = os.path.abspath(sa_path)
+            if abs_sa_path.startswith(repo_root):
+                res = messagebox.askyesno('警告', '你所選的 Service Account JSON 位於專案目錄下（可能會被 Commit）。是否確定要使用它？')
+                if not res:
+                    return
+        except Exception:
+            pass
 
         # disable both run buttons (big and legacy) while running
         try:
