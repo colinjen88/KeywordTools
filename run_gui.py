@@ -841,7 +841,7 @@ class App(tk.Tk):
                 sa_path = self.sa_var.get().strip() if hasattr(self, 'sa_var') else ''
                 # Decide output based on selected format
                 if fmt == 'CSV':
-                    out = base + '.csv'
+                    out = self.get_export_filename('.csv')
                     cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
                     if sa_path:
                         cmd.extend(['--service-account', sa_path])
