@@ -20,6 +20,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import csv
 import tkinter.font as tkfont
+import re
 from datetime import date, timedelta
 from datetime import datetime
 
@@ -68,9 +69,9 @@ class App(tk.Tk):
                 frm.rowconfigure(r, minsize=LINE_HEIGHT)
             except Exception:
                 pass
-        # make column 2 (between start and end inputs) have a min width of ~40px
+        # make column 2 (between start and end inputs) have a smaller min width to reduce large gaps
         try:
-            frm.columnconfigure(2, minsize=40)
+            frm.columnconfigure(2, minsize=8)
         except Exception:
             pass
 
@@ -92,6 +93,8 @@ class App(tk.Tk):
             self.last_preset = None
             # sort state per column: True = descending, False = ascending
             self.sort_state = {}
+            # link id counter for log file links
+            self._link_count = 0
 
         ttk.Label(frm, text="Search Console 屬性 (URL)：", style='Uniform.TLabel').grid(row=0, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.property_var = tk.StringVar(value="https://pm.shiny.com.tw/")
@@ -99,11 +102,11 @@ class App(tk.Tk):
 
         ttk.Label(frm, text="起始日期（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=1, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.start_var = tk.StringVar(value=(date.today() - timedelta(days=30)).isoformat())
-        ttk.Entry(frm, textvariable=self.start_var, width=20, style='Uniform.TEntry').grid(row=1, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Entry(frm, textvariable=self.start_var, width=20, style='Uniform.TEntry').grid(row=1, column=1, sticky=tk.W, padx=(4,4), pady=(8,8))
 
         ttk.Label(frm, text="結束日期（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=1, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.end_var = tk.StringVar(value=date.today().isoformat())
-        ttk.Entry(frm, textvariable=self.end_var, width=20, style='Uniform.TEntry').grid(row=1, column=3, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Entry(frm, textvariable=self.end_var, width=20, style='Uniform.TEntry').grid(row=1, column=3, sticky=tk.W, padx=(4,4), pady=(8,8))
 
         # preset ranges
         # place preset buttons aligned to the start-date entry's left side
@@ -280,6 +283,15 @@ class App(tk.Tk):
 
     def load_csv_into_table(self, path, max_rows=10000):
         # read CSV and populate Treeview
+        # resolve path for PyInstaller onefile bundles (sys._MEIPASS) if needed
+        try:
+            if not os.path.exists(path) and getattr(sys, 'frozen', False):
+                base = getattr(sys, '_MEIPASS', None) or os.path.dirname(sys.executable)
+                alt = os.path.join(base, os.path.basename(path))
+                if os.path.exists(alt):
+                    path = alt
+        except Exception:
+            pass
         rows = []
         header = []
         used_encoding = None
@@ -695,8 +707,58 @@ class App(tk.Tk):
                 messagebox.showerror('錯誤', str(e))
 
     def append_log(self, text):
-        self.log.insert(tk.END, text + "\n")
+        # Detect file paths in text and make them clickable links in the log
+        # Strategy: break text into tokens and if a token refers to an existing file path, insert it as a clickable tag
+        try:
+            if not getattr(self, 'log', None) or not self.log.winfo_exists():
+                # fallback to stdout
+                print(text)
+                return
+        except Exception:
+            try:
+                print(text)
+            except Exception:
+                pass
+            return
+        tokens = text.split()
+        inserted_any = False
+        for i, token in enumerate(tokens):
+            if os.path.exists(token):
+                # prefix before the path
+                prefix = ' '.join(tokens[:i])
+                suffix = ' '.join(tokens[i+1:])
+                if prefix:
+                    self.log.insert(tk.END, prefix + ' ')
+                # insert the file path as a clickable tag
+                tag_name = f'filelink_{self._link_count}'
+                self._link_count += 1
+                self.log.insert(tk.END, token, tag_name)
+                # style the tag
+                try:
+                    self.log.tag_config(tag_name, foreground='#1565c0', underline=True)
+                    # bind click event
+                    self.log.tag_bind(tag_name, '<Button-1>', lambda e, p=token: self.open_file(p))
+                except Exception:
+                    pass
+                if suffix:
+                    self.log.insert(tk.END, ' ' + suffix)
+                self.log.insert(tk.END, '\n')
+                inserted_any = True
+                break
+        if not inserted_any:
+            self.log.insert(tk.END, text + "\n")
         self.log.see(tk.END)
+
+    def open_file(self, path: str):
+        try:
+            # On Windows, os.startfile is appropriate. Fall back to subprocess on other platforms
+            if os.name == 'nt':
+                os.startfile(path)
+            else:
+                import subprocess
+                subprocess.run(['xdg-open', path], check=False)
+        except Exception as e:
+            messagebox.showerror('無法開啟檔案', str(e))
 
     def set_status(self, text: str, color: str):
         # thread-safe status update
