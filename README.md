@@ -79,6 +79,31 @@ GUI 功能說明：
 - 結果表格說明：結果表格包含欄位 `關鍵字`、`排名`、`點擊`、`曝光` 與 `點擊率`（CTR），數值欄位會以右對齊並有額外右側 padding。表格支援點擊標題欄做雙向排序（點一下升冪、再點一下降冪），並在標題顯示箭頭 ▲/▼。排序後表格會重新套用交替列底色以維持清晰性。
 - 匯出檔案命名：匯出時會自動為檔名加入當日日期與查詢區間，例如 `gsc_keyword_report_20251118查詢(20251101-20251130).csv`。
 
+打包為 Windows 執行檔（可選）
+---------------------------------
+若需要把 GUI 打包成單一 Windows 執行檔（.exe），我們提供一個 PowerShell 腳本 `build_exe.ps1` 幫助你使用 PyInstaller 建檔：
+
+步驟：
+1) 建議建立虛擬環境並安裝所有依賴：
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
+```
+2) 執行打包：
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_exe.ps1 -OneFile -NoConsole -ExeName GSC_Keyword_Tool -IconPath .\assets\app.ico
+```
+3) 打包結果：
+ - 生成的可執行檔會放在 `dist\GSC_Keyword_Tool.exe`。
+ - 請不要把 Service Account JSON 或其他憑證嵌入到執行檔（在 GUI 中改為提供憑證檔案的方式）。
+
+注意事項：
+ - 若你要支援暗色主題或第三方套件，PyInstaller 有時候可能需要 `--hidden-import` 的參數以包含動態載入的模組（`ttkbootstrap` 等）。腳本內有示範加入 `ttkbootstrap` 的 hidden-import。若發現缺少模組，你可以在 `build_exe.ps1` 裡新增 `--hidden-import`。
+ - 建議在 Windows 的 clean environment（如 VM 或 CI runner）上打包以獲得相容的可執行檔
+
+
 若要我直接在本機執行真實查詢，請回覆以下資訊：
 - `property`（Search Console property URL）
 - `start-date` 與 `end-date`
