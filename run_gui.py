@@ -77,8 +77,10 @@ class App(tk.Tk):
         fmt_combo = ttk.Combobox(frm, textvariable=self.format_var, values=['CSV', 'Excel (.xlsx)'], state='readonly', width=18)
         fmt_combo.grid(row=6, column=1, sticky=tk.W)
 
+        # keep legacy run_btn for compatibility (hidden)
         self.run_btn = ttk.Button(frm, text="執行報表", command=self.on_run)
-        self.run_btn.grid(row=7, column=1, pady=8, sticky=tk.W)
+        # hide original small run_btn (we use larger one in button frame)
+        self.run_btn.grid_forget()
 
         self.log = tk.Text(frm, height=18)
         self.log.grid(row=8, column=0, columnspan=4, pady=6, sticky=tk.NSEW)
@@ -87,6 +89,25 @@ class App(tk.Tk):
 
         # results frame
         ttk.Label(frm, text="結果：").grid(row=9, column=0, sticky=tk.W, pady=(8,0))
+        # status label (left of results)
+        self.status_var = tk.StringVar(value='待命')
+        self.status_label = tk.Label(frm, text='狀態：待命', bg='#808080', fg='white', padx=8, pady=2)
+        self.status_label.grid(row=9, column=1, sticky=tk.W, padx=(8,0))
+
+        # statistics frame (right side)
+        stats_frame = ttk.Frame(frm, relief=tk.RIDGE)
+        stats_frame.grid(row=9, column=2, columnspan=2, sticky=tk.EW, padx=(8,0))
+        stats_frame.columnconfigure(0, weight=1)
+        ttk.Label(stats_frame, text='統計').grid(row=0, column=0, sticky=tk.W)
+        self.stat_kw_var = tk.StringVar(value='關鍵字數: 0')
+        self.stat_clicks_var = tk.StringVar(value='總點擊: 0')
+        self.stat_impr_var = tk.StringVar(value='總曝光: 0')
+        self.stat_pos_var = tk.StringVar(value='平均排名: -')
+        ttk.Label(stats_frame, textvariable=self.stat_kw_var).grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(stats_frame, textvariable=self.stat_clicks_var).grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(stats_frame, textvariable=self.stat_impr_var).grid(row=3, column=0, sticky=tk.W)
+        ttk.Label(stats_frame, textvariable=self.stat_pos_var).grid(row=4, column=0, sticky=tk.W)
+
         self.table_frame = ttk.Frame(frm)
         self.table_frame.grid(row=10, column=0, columnspan=4, sticky=tk.NSEW)
         frm.rowconfigure(10, weight=1)
@@ -96,10 +117,20 @@ class App(tk.Tk):
         self.current_columns = []
         btn_frame = ttk.Frame(frm)
         btn_frame.grid(row=11, column=0, columnspan=4, sticky=tk.W, pady=6)
+        # enlarge Run button style
+        try:
+            style = ttk.Style()
+            style.configure('Big.TButton', font=('Segoe UI', 10, 'bold'), padding=(12,8))
+        except Exception:
+            pass
+
         self.save_btn = ttk.Button(btn_frame, text="輸出檔案", command=self.export_csv)
         self.save_btn.grid(row=0, column=0, padx=(0,8))
         self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
         self.clear_btn.grid(row=0, column=1, padx=(0,8))
+        # Run button bigger and styled
+        self.run_btn_big = ttk.Button(btn_frame, text="執行報表", command=self.on_run, style='Big.TButton')
+        self.run_btn_big.grid(row=0, column=2, padx=(12,8))
 
         # start file watcher to auto-load CSV created externally
         try:
@@ -164,7 +195,8 @@ class App(tk.Tk):
         idx_impr = idx(['impressions', 'impression'])
         idx_pos = idx(['position', 'avg_position', 'pos'])
 
-        display_cols = ['關鍵字', '點擊', '搜尋', '排名']
+        # '搜尋' 改為更常用的名稱 '曝光'
+        display_cols = ['關鍵字', '點擊', '曝光', '排名']
         mapped_rows = []
         for r in rows:
             mapped = []
@@ -237,6 +269,22 @@ class App(tk.Tk):
         self.log.insert(tk.END, text + "\n")
         self.log.see(tk.END)
 
+    def set_status(self, text: str, color: str):
+        # thread-safe status update
+        def _update():
+            # map basic color names to hex for better visibility
+            color_map = {
+                'green': '#2e7d32',
+                'blue': '#1565c0',
+                'red': '#c62828'
+            }
+            bg = color_map.get(color, color if color and color.startswith('#') else '#808080')
+            self.status_label.config(text=f'狀態：{text}', bg=bg)
+        try:
+            self.after(0, _update)
+        except Exception:
+            pass
+
     def start_file_watcher(self):
         # start background thread to watch for new/updated CSV files and auto-load
         self._watch_stop = False
@@ -277,8 +325,14 @@ class App(tk.Tk):
             self.append_log(f'偵測到新 CSV：{path}，自動載入表格')
             self.load_csv_into_table(path)
             self._last_loaded_path = os.path.abspath(path)
+            # update status
+            try:
+                self.set_status('查詢完成', 'blue')
+            except Exception:
+                pass
         except Exception as e:
             self.append_log('自動載入失敗: ' + str(e))
+
 
     def on_run(self):
         prop = self.property_var.get().strip()
@@ -293,7 +347,20 @@ class App(tk.Tk):
             messagebox.showerror('缺少參數', '請提供 property、開始日期與結束日期')
             return
 
-        self.run_btn.config(state=tk.DISABLED)
+        # disable both run buttons (big and legacy) while running
+        try:
+            self.run_btn_big.config(state=tk.DISABLED)
+        except Exception:
+            pass
+        try:
+            self.run_btn.config(state=tk.DISABLED)
+        except Exception:
+            pass
+        # set status to querying
+        try:
+            self.set_status('查詢中', 'green')
+        except Exception:
+            pass
         self.log.delete('1.0', tk.END)
 
         def worker():
@@ -343,8 +410,24 @@ class App(tk.Tk):
                         self.append_log(f'Failed to generate: {f}')
             except Exception as e:
                 self.append_log('Error: ' + str(e))
+                try:
+                    self.set_status('錯誤', 'red')
+                except Exception:
+                    pass
             finally:
-                self.run_btn.config(state=tk.NORMAL)
+                try:
+                    self.run_btn_big.config(state=tk.NORMAL)
+                except Exception:
+                    pass
+                try:
+                    self.run_btn.config(state=tk.NORMAL)
+                except Exception:
+                    pass
+                # if no exception, set completed (if not already set to error)
+                try:
+                    self.set_status('查詢完成', 'blue')
+                except Exception:
+                    pass
 
         threading.Thread(target=worker, daemon=True).start()
 
