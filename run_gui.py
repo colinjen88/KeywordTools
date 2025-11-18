@@ -18,6 +18,8 @@ import os
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+import csv
+from datetime import date, timedelta
 
 
 SCRIPT = "gsc_keyword_report.py"
@@ -32,47 +34,198 @@ class App(tk.Tk):
         frm = ttk.Frame(self, padding=12)
         frm.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frm, text="Property (Search Console URL):").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(frm, text="Search Console 屬性 (URL)：").grid(row=0, column=0, sticky=tk.W)
         self.property_var = tk.StringVar(value="https://pm.shiny.com.tw/")
         ttk.Entry(frm, textvariable=self.property_var, width=60).grid(row=0, column=1, columnspan=3, sticky=tk.W)
 
-        ttk.Label(frm, text="Start date (YYYY-MM-DD):").grid(row=1, column=0, sticky=tk.W)
-        self.start_var = tk.StringVar(value="2025-10-01")
+        ttk.Label(frm, text="起始日期（YYYY-MM-DD）：").grid(row=1, column=0, sticky=tk.W)
+        self.start_var = tk.StringVar(value=(date.today() - timedelta(days=30)).isoformat())
         ttk.Entry(frm, textvariable=self.start_var, width=20).grid(row=1, column=1, sticky=tk.W)
 
-        ttk.Label(frm, text="End date (YYYY-MM-DD):").grid(row=1, column=2, sticky=tk.W)
-        self.end_var = tk.StringVar(value="2025-10-31")
+        ttk.Label(frm, text="結束日期（YYYY-MM-DD）：").grid(row=1, column=2, sticky=tk.W)
+        self.end_var = tk.StringVar(value=date.today().isoformat())
         ttk.Entry(frm, textvariable=self.end_var, width=20).grid(row=1, column=3, sticky=tk.W)
 
         self.mock_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(frm, text="Use mock data (no GSC auth)", variable=self.mock_var).grid(row=2, column=0, columnspan=2, sticky=tk.W)
+        ttk.Checkbutton(frm, text="使用 mock 範例資料（不呼叫 GSC API）", variable=self.mock_var).grid(row=2, column=0, columnspan=2, sticky=tk.W)
 
-        ttk.Label(frm, text="Keywords file:").grid(row=3, column=0, sticky=tk.W)
+        # preset ranges
+        preset_frame = ttk.Frame(frm)
+        preset_frame.grid(row=2, column=2, columnspan=2, sticky=tk.E)
+        ttk.Label(preset_frame, text="快速區間：").grid(row=0, column=0, sticky=tk.W)
+        ttk.Button(preset_frame, text="近7天", command=lambda: self.set_preset(7)).grid(row=0, column=1, padx=4)
+        ttk.Button(preset_frame, text="近30天", command=lambda: self.set_preset(30)).grid(row=0, column=2, padx=4)
+        ttk.Button(preset_frame, text="近1季", command=lambda: self.set_preset(90)).grid(row=0, column=3, padx=4)
+        ttk.Button(preset_frame, text="近1年", command=lambda: self.set_preset(365)).grid(row=0, column=4, padx=4)
+
+        ttk.Label(frm, text="關鍵字檔案：").grid(row=3, column=0, sticky=tk.W)
         self.kws_var = tk.StringVar(value="allKeyWord_normalized.csv")
         ttk.Entry(frm, textvariable=self.kws_var, width=40).grid(row=3, column=1, sticky=tk.W)
         ttk.Button(frm, text="Browse", command=self.browse_kws).grid(row=3, column=2, sticky=tk.W)
 
-        ttk.Label(frm, text="Output base name:").grid(row=4, column=0, sticky=tk.W)
+        ttk.Label(frm, text="Service account JSON（選填）：").grid(row=4, column=0, sticky=tk.W)
+        self.sa_var = tk.StringVar(value="")
+        ttk.Entry(frm, textvariable=self.sa_var, width=40).grid(row=4, column=1, sticky=tk.W)
+        ttk.Button(frm, text="瀏覽", command=self.browse_sa).grid(row=4, column=2, sticky=tk.W)
+
+        ttk.Label(frm, text="輸出檔案基底名稱：").grid(row=5, column=0, sticky=tk.W)
         self.outbase_var = tk.StringVar(value="gsc_keyword_report")
-        ttk.Entry(frm, textvariable=self.outbase_var, width=30).grid(row=4, column=1, sticky=tk.W)
+        ttk.Entry(frm, textvariable=self.outbase_var, width=30).grid(row=5, column=1, sticky=tk.W)
 
-        self.csv_var = tk.BooleanVar(value=True)
-        self.xlsx_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frm, text="CSV", variable=self.csv_var).grid(row=5, column=1, sticky=tk.W)
-        ttk.Checkbutton(frm, text="Excel (.xlsx)", variable=self.xlsx_var).grid(row=5, column=2, sticky=tk.W)
+        ttk.Label(frm, text="輸出格式：").grid(row=6, column=0, sticky=tk.W)
+        self.format_var = tk.StringVar(value='CSV')
+        fmt_combo = ttk.Combobox(frm, textvariable=self.format_var, values=['CSV', 'Excel (.xlsx)'], state='readonly', width=18)
+        fmt_combo.grid(row=6, column=1, sticky=tk.W)
 
-        self.run_btn = ttk.Button(frm, text="Run Report", command=self.on_run)
-        self.run_btn.grid(row=6, column=1, pady=8, sticky=tk.W)
+        self.run_btn = ttk.Button(frm, text="執行報表", command=self.on_run)
+        self.run_btn.grid(row=7, column=1, pady=8, sticky=tk.W)
 
         self.log = tk.Text(frm, height=18)
-        self.log.grid(row=7, column=0, columnspan=4, pady=6, sticky=tk.NSEW)
-        frm.rowconfigure(7, weight=1)
+        self.log.grid(row=8, column=0, columnspan=4, pady=6, sticky=tk.NSEW)
+        frm.rowconfigure(8, weight=1)
         frm.columnconfigure(3, weight=1)
+
+        # results frame
+        ttk.Label(frm, text="結果：").grid(row=9, column=0, sticky=tk.W, pady=(8,0))
+        self.table_frame = ttk.Frame(frm)
+        self.table_frame.grid(row=10, column=0, columnspan=4, sticky=tk.NSEW)
+        frm.rowconfigure(10, weight=1)
+
+        self.tree = None
+        self.current_rows = []
+        self.current_columns = []
+        btn_frame = ttk.Frame(frm)
+        btn_frame.grid(row=11, column=0, columnspan=4, sticky=tk.W, pady=6)
+        self.save_btn = ttk.Button(btn_frame, text="輸出檔案", command=self.export_csv)
+        self.save_btn.grid(row=0, column=0, padx=(0,8))
+        self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
+        self.clear_btn.grid(row=0, column=1, padx=(0,8))
 
     def browse_kws(self):
         p = filedialog.askopenfilename(initialdir='.', filetypes=[('CSV files','*.csv'),('All files','*.*')])
         if p:
             self.kws_var.set(p)
+
+    def browse_sa(self):
+        p = filedialog.askopenfilename(initialdir='.', filetypes=[('JSON files','*.json'),('All files','*.*')])
+        if p:
+            self.sa_var.set(p)
+
+    def set_preset(self, days:int):
+        end = date.today()
+        start = end - timedelta(days=days-1)
+        self.start_var.set(start.isoformat())
+        self.end_var.set(end.isoformat())
+
+    def clear_table(self):
+        if self.tree:
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self.tree.destroy()
+            self.tree = None
+            self.current_rows = []
+            self.current_columns = []
+
+    def load_csv_into_table(self, path, max_rows=10000):
+        # read CSV and populate Treeview
+        with open(path, newline='', encoding='utf-8-sig') as fh:
+            reader = csv.reader(fh)
+            try:
+                header = next(reader)
+            except StopIteration:
+                header = []
+
+            rows = []
+            for i, r in enumerate(reader):
+                rows.append(r)
+                if i+1 >= max_rows:
+                    break
+
+        # clear existing
+        self.clear_table()
+
+        # map headers to Chinese columns if possible
+        src_cols = [c.strip().lower() for c in header]
+        # find indices
+        def idx(names):
+            for n in names:
+                if n in src_cols:
+                    return src_cols.index(n)
+            return None
+
+        idx_keyword = idx(['keyword', 'query'])
+        idx_clicks = idx(['clicks', 'click'])
+        idx_impr = idx(['impressions', 'impression'])
+        idx_pos = idx(['position', 'avg_position', 'pos'])
+
+        display_cols = ['關鍵字', '點擊', '搜尋', '排名']
+        mapped_rows = []
+        for r in rows:
+            mapped = []
+            mapped.append(r[idx_keyword] if idx_keyword is not None and idx_keyword < len(r) else '')
+            mapped.append(r[idx_clicks] if idx_clicks is not None and idx_clicks < len(r) else '')
+            mapped.append(r[idx_impr] if idx_impr is not None and idx_impr < len(r) else '')
+            mapped.append(r[idx_pos] if idx_pos is not None and idx_pos < len(r) else '')
+            mapped_rows.append(mapped)
+
+        self.current_columns = display_cols
+        self.current_rows = mapped_rows
+
+        # create tree (height shows 20 rows)
+        tree = ttk.Treeview(self.table_frame, columns=display_cols, show='headings', height=20)
+        vsb = ttk.Scrollbar(self.table_frame, orient='vertical', command=tree.yview)
+        hsb = ttk.Scrollbar(self.table_frame, orient='horizontal', command=tree.xview)
+        tree.configure(yscroll=vsb.set, xscroll=hsb.set)
+        tree.grid(row=0, column=0, sticky='nsew')
+        vsb.grid(row=0, column=1, sticky='ns')
+        hsb.grid(row=1, column=0, sticky='ew')
+        self.table_frame.rowconfigure(0, weight=1)
+        self.table_frame.columnconfigure(0, weight=1)
+
+        for c in display_cols:
+            tree.heading(c, text=c)
+            tree.column(c, width=160, anchor='w')
+
+        for r in mapped_rows:
+            tree.insert('', tk.END, values=r)
+
+        self.tree = tree
+
+    def export_csv(self):
+        # unified export: use selected format
+        if not self.current_columns:
+            messagebox.showinfo('無資料', '目前表格沒有資料可匯出')
+            return
+        fmt = self.format_var.get() if hasattr(self, 'format_var') else 'CSV'
+        if fmt == 'CSV':
+            p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile=self.outbase_var.get() + '.csv')
+            if not p:
+                return
+            try:
+                with open(p, 'w', newline='', encoding='utf-8-sig') as fh:
+                    writer = csv.writer(fh)
+                    writer.writerow(self.current_columns)
+                    for r in self.current_rows:
+                        writer.writerow(r)
+                messagebox.showinfo('已儲存', f'已儲存 CSV 到 {p}')
+            except Exception as e:
+                messagebox.showerror('錯誤', str(e))
+        else:
+            # Excel
+            p = filedialog.asksaveasfilename(defaultextension='.xlsx', filetypes=[('Excel','*.xlsx')], initialfile=self.outbase_var.get() + '.xlsx')
+            if not p:
+                return
+            try:
+                try:
+                    import pandas as pd
+                except Exception:
+                    messagebox.showerror('缺少套件', '匯出 XLSX 需要安裝 pandas 和 openpyxl')
+                    return
+                df = pd.DataFrame(self.current_rows, columns=self.current_columns)
+                df.to_excel(p, index=False)
+                messagebox.showinfo('已儲存', f'已儲存 Excel 到 {p}')
+            except Exception as e:
+                messagebox.showerror('錯誤', str(e))
 
     def append_log(self, text):
         self.log.insert(tk.END, text + "\n")
@@ -85,11 +238,10 @@ class App(tk.Tk):
         kws = self.kws_var.get().strip() or 'allKeyWord_normalized.csv'
         base = self.outbase_var.get().strip() or 'gsc_keyword_report'
         use_mock = self.mock_var.get()
-        do_csv = self.csv_var.get()
-        do_xlsx = self.xlsx_var.get()
+        fmt = self.format_var.get() if hasattr(self, 'format_var') else 'CSV'
 
         if not prop or not start or not end:
-            messagebox.showerror('Missing', 'Please provide property, start date and end date')
+            messagebox.showerror('缺少參數', '請提供 property、開始日期與結束日期')
             return
 
         self.run_btn.config(state=tk.DISABLED)
@@ -98,24 +250,31 @@ class App(tk.Tk):
         def worker():
             try:
                 outputs = []
-                if do_csv:
+                sa_path = self.sa_var.get().strip() if hasattr(self, 'sa_var') else ''
+                # Decide output based on selected format
+                if fmt == 'CSV':
                     out = base + '.csv'
                     cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
                     if use_mock:
                         cmd.append('--mock')
-                    self.append_log('Running: ' + ' '.join(cmd))
+                    else:
+                        if sa_path:
+                            cmd.extend(['--service-account', sa_path])
+                    self.append_log('執行: ' + ' '.join(cmd))
                     proc = subprocess.run(cmd, capture_output=True, text=True)
                     self.append_log(proc.stdout)
                     if proc.stderr:
                         self.append_log(proc.stderr)
                     outputs.append(out)
-
-                if do_xlsx:
+                else:
                     out = base + '.xlsx'
                     cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
                     if use_mock:
                         cmd.append('--mock')
-                    self.append_log('Running: ' + ' '.join(cmd))
+                    else:
+                        if sa_path:
+                            cmd.extend(['--service-account', sa_path])
+                    self.append_log('執行: ' + ' '.join(cmd))
                     proc = subprocess.run(cmd, capture_output=True, text=True)
                     self.append_log(proc.stdout)
                     if proc.stderr:
@@ -125,6 +284,12 @@ class App(tk.Tk):
                 for f in outputs:
                     if os.path.exists(f):
                         self.append_log(f'Generated: {f}')
+                        # if CSV, load into table
+                        if f.lower().endswith('.csv'):
+                            try:
+                                self.load_csv_into_table(f)
+                            except Exception as e:
+                                self.append_log('Failed to load CSV into table: ' + str(e))
                     else:
                         self.append_log(f'Failed to generate: {f}')
             except Exception as e:
