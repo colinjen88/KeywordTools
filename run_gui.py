@@ -101,6 +101,12 @@ class App(tk.Tk):
         self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
         self.clear_btn.grid(row=0, column=1, padx=(0,8))
 
+        # start file watcher to auto-load CSV created externally
+        try:
+            self.start_file_watcher()
+        except Exception:
+            pass
+
     def browse_kws(self):
         p = filedialog.askopenfilename(initialdir='.', filetypes=[('CSV files','*.csv'),('All files','*.*')])
         if p:
@@ -231,6 +237,49 @@ class App(tk.Tk):
         self.log.insert(tk.END, text + "\n")
         self.log.see(tk.END)
 
+    def start_file_watcher(self):
+        # start background thread to watch for new/updated CSV files and auto-load
+        self._watch_stop = False
+        self._watch_last_mtime = 0
+        def watcher():
+            import time, glob
+            while not self._watch_stop:
+                try:
+                    csvs = glob.glob(os.path.join('.', '*.csv'))
+                    if not csvs:
+                        time.sleep(2)
+                        continue
+                    latest = max(csvs, key=os.path.getmtime)
+                    try:
+                        m = os.path.getmtime(latest)
+                    except OSError:
+                        m = 0
+                    if m and m > self._watch_last_mtime:
+                        self._watch_last_mtime = m
+                        # schedule load on main thread
+                        self.after(0, lambda p=latest: self._auto_load_if_needed(p))
+                except Exception:
+                    pass
+                time.sleep(2)
+
+        t = threading.Thread(target=watcher, daemon=True)
+        t.start()
+
+    def _auto_load_if_needed(self, path):
+        # Only auto-load if table is empty or the file is different from current loaded
+        try:
+            if not os.path.exists(path):
+                return
+            if self.current_rows and os.path.abspath(path) == getattr(self, '_last_loaded_path', None):
+                # already loaded
+                return
+            # load
+            self.append_log(f'偵測到新 CSV：{path}，自動載入表格')
+            self.load_csv_into_table(path)
+            self._last_loaded_path = os.path.abspath(path)
+        except Exception as e:
+            self.append_log('自動載入失敗: ' + str(e))
+
     def on_run(self):
         prop = self.property_var.get().strip()
         start = self.start_var.get().strip()
@@ -303,3 +352,4 @@ class App(tk.Tk):
 if __name__ == '__main__':
     app = App()
     app.mainloop()
+
