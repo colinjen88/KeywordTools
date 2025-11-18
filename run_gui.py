@@ -954,12 +954,14 @@ class App(tk.Tk):
                 # Prefer importing and running the CLI module in-process (avoids new console windows)
                 # Try import and call main() even when frozen; fallback to subprocess if import is not possible.
                 try:
-                    import importlib, io
+                    import importlib, io, traceback
                     module = importlib.import_module('gsc_keyword_report')
                     imported_cli = True
-                except Exception:
+                except Exception as ex:
                     module = None
                     imported_cli = False
+                    err_tb = traceback.format_exc()
+                    self.append_log('無法 import gsc_keyword_report，將 fallback 到 subprocess；錯誤詳情:\n' + err_tb)
                 if imported_cli:
                     try:
                         # run module.main() with replaced sys.argv to pass the CLI args

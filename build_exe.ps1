@@ -49,6 +49,11 @@ $pyArgs += "--hidden-import"; $pyArgs += "pandas"
 $pyArgs += "--hidden-import"; $pyArgs += "openpyxl"
 # ensure CLI module is included in analysis so we can import it inside the exe
 $pyArgs += "--hidden-import"; $pyArgs += "gsc_keyword_report"
+# ensure google apis and oauth libs are included
+$pyArgs += "--hidden-import"; $pyArgs += "google.oauth2"
+$pyArgs += "--hidden-import"; $pyArgs += "googleapiclient"
+$pyArgs += "--hidden-import"; $pyArgs += "google_auth_oauthlib"
+$pyArgs += "--hidden-import"; $pyArgs += "google.auth"
 
 if ($IconPath -and (Test-Path $IconPath)) {
     Write-Info "Using icon: $IconPath"
