@@ -66,5 +66,5 @@ GUI 功能說明：
 若要我直接在本機執行真實查詢，請回覆以下資訊：
 - `property`（Search Console property URL）
 - `start-date` 與 `end-date`
-- 是否使用 repository 裡的 service account（`gsc-keyword-query-a73ecc893169.json`）或上傳 OAuth `client_secret.json`
+- 是否提供 service account JSON（例如 `gsc-key-new.json`）或上傳 OAuth `client_secret.json`。
 

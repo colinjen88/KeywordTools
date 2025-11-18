@@ -155,7 +155,7 @@ def main():
     parser.add_argument("--keywords", required=True, help="CSV 檔，第一欄為關鍵字 (no header required)")
     parser.add_argument("--start-date", required=True, help="YYYY-MM-DD")
     parser.add_argument("--end-date", required=True, help="YYYY-MM-DD")
-    parser.add_argument("--service-account", default="gsc-keyword-query-a73ecc893169.json", help="service account JSON 路徑 (可選)")
+    parser.add_argument("--service-account", default=None, help="service account JSON 路徑 (可選)。若未提供，可透過環境變數 GSC_SERVICE_ACCOUNT 指定路徑")
     parser.add_argument("--delegated-user", default=None, help="若使用 service account 並需委派，填入被委派的帳號 email")
     parser.add_argument("--oauth-client", default=None, help="OAuth client_secret.json，若不使用 service account 可提供此檔進行 OAuth Flow")
     parser.add_argument("--row-limit", type=int, default=25000, help="bulk 查詢的 rowLimit (預設 25000)")

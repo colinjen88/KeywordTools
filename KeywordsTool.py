@@ -11,12 +11,13 @@ import pandas as pd
 import openpyxl
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
+import os
 from datetime import datetime, timedelta
 import time
 import sys
 
 # ========== 配置 ==========
-SERVICE_ACCOUNT_FILE = 'gsc-keyword-query-a73ecc893169.json'  # 你下載的 JSON 檔案
+SERVICE_ACCOUNT_FILE = None  # 預設不硬編碼檔名。可設定環境變數 `GSC_SERVICE_ACCOUNT` 或在此指定路徑
 GSC_SITE_URL = 'https://pm.shiny.com.tw/'  # 你的網站
 KEYWORDS_FILE = 'keywords.csv'  # 你的關鍵字清單（CSV 或 Excel）
 OUTPUT_FILE = f'gsc_results_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'  # 輸出檔案名稱
@@ -26,8 +27,14 @@ QUERY_DAYS = 90  # 查詢過去 90 天的數據
 def authenticate_gsc():
     """使用 Service Account 認證連接 GSC API"""
     scopes = ['https://www.googleapis.com/auth/webmasters.readonly']
+    # 先嘗試從變數取值，若為 None 則嘗試讀取環境變數 `GSC_SERVICE_ACCOUNT`
+    sa_file = SERVICE_ACCOUNT_FILE or os.environ.get('GSC_SERVICE_ACCOUNT')
+    if not sa_file or not os.path.exists(sa_file):
+        raise RuntimeError(
+            "Service account 檔案未設定或找不到。請設定環境變數 `GSC_SERVICE_ACCOUNT` 指向 JSON 檔或在程式中指定路徑。"
+        )
     credentials = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=scopes
+        sa_file, scopes=scopes
     )
     service = build('webmasters', 'v3', credentials=credentials)
     return service
