@@ -42,7 +42,11 @@ $pyArgs += "--name"; $pyArgs += $ExeName
 
 # Hidden imports may help include dynamic imports (ttkbootstrap etc.)
 $pyArgs += "--hidden-import"; $pyArgs += "ttkbootstrap"
-$pyArgs += "--hidden-import"; $pyArgs += "ttk"
+# 'ttk' is part of tkinter; ensure tkinter.ttk is included
+$pyArgs += "--hidden-import"; $pyArgs += "tkinter"
+$pyArgs += "--hidden-import"; $pyArgs += "tkinter.ttk"
+$pyArgs += "--hidden-import"; $pyArgs += "pandas"
+$pyArgs += "--hidden-import"; $pyArgs += "openpyxl"
 
 if ($IconPath -and (Test-Path $IconPath)) {
     Write-Info "Using icon: $IconPath"
@@ -51,7 +55,15 @@ if ($IconPath -and (Test-Path $IconPath)) {
 
 # Add any data files that should be packaged (eg CSV templates) - format: src;dest (Windows uses ;)
 # Example: --add-data "allKeyWord_normalized.csv;."
+# default include of sample CSV and keyword lists (do NOT include service account keys)
 $pyArgs += "--add-data"; $pyArgs += "allKeyWord_normalized.csv;."
+$pyArgs += "--add-data"; $pyArgs += "gsc_keyword_report_sample.csv;."
+
+# optionally include a folder named 'assets' if it exists
+if (Test-Path .\assets) {
+  Write-Info "Including assets folder"
+  $pyArgs += "--add-data"; $pyArgs += "assets;assets"
+}
 
 # build dir cleanup
 if (Test-Path .\dist) { Remove-Item -Recurse -Force .\dist }

@@ -477,6 +477,22 @@ class App(tk.Tk):
                 messagebox.showinfo('已儲存', f'已儲存 CSV 到 {p}')
             except Exception as e:
                 messagebox.showerror('錯誤', str(e))
+        else:
+            # Excel export
+            p = filedialog.asksaveasfilename(defaultextension='.xlsx', filetypes=[('Excel','*.xlsx')], initialfile=self.get_export_filename('.xlsx'))
+            if not p:
+                return
+            try:
+                try:
+                    import pandas as pd
+                except Exception:
+                    messagebox.showerror('缺少套件', '匯出 XLSX 需要安裝 pandas 和 openpyxl')
+                    return
+                df = pd.DataFrame(self.current_rows, columns=self.current_columns)
+                df.to_excel(p, index=False)
+                messagebox.showinfo('已儲存', f'已儲存 Excel 到 {p}')
+            except Exception as e:
+                messagebox.showerror('錯誤', str(e))
 
     # ----- Table interactions: sorting, auto-width, filter, right-click -----
     def setup_table_features(self):
