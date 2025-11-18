@@ -99,6 +99,10 @@ powershell -ExecutionPolicy Bypass -File .\build_exe.ps1 -OneFile -NoConsole -Ex
  - 生成的可執行檔會放在 `dist\GSC_Keyword_Tool.exe`。
  - 請不要把 Service Account JSON 或其他憑證嵌入到執行檔（在 GUI 中改為提供憑證檔案的方式）。
 
+額外說明：
+- `build_exe.ps1` 預設會把 `allKeyWord_normalized.csv` 與 `gsc_keyword_report_sample.csv` 一併加入 exe 的資料區（`--add-data`），並支援包含一個 `assets/` 資料夾（如果存在）。
+- 若需要自訂 icon 或加入其他資料檔，請使用 `-IconPath` 或在 `build_exe.ps1` 裡加入 `--add-data` 的參數。
+
 注意事項：
  - 若你要支援暗色主題或第三方套件，PyInstaller 有時候可能需要 `--hidden-import` 的參數以包含動態載入的模組（`ttkbootstrap` 等）。腳本內有示範加入 `ttkbootstrap` 的 hidden-import。若發現缺少模組，你可以在 `build_exe.ps1` 裡新增 `--hidden-import`。
  - 建議在 Windows 的 clean environment（如 VM 或 CI runner）上打包以獲得相容的可執行檔
@@ -108,4 +112,26 @@ powershell -ExecutionPolicy Bypass -File .\build_exe.ps1 -OneFile -NoConsole -Ex
 - `property`（Search Console property URL）
 - `start-date` 與 `end-date`
 - 是否提供 service account JSON（例如 `gsc-key-new.json`）或上傳 OAuth `client_secret.json`。
+
+----
+建議加入 pre-commit（防止意外 commit 憑證）
+---------------------------------
+倘若你想在本地或 CI 中避免敏感憑證被加入版本控制，建議安裝及使用 `pre-commit` 與 `detect-secrets`：
+
+1) 安裝（建議在虛擬環境中）：
+```powershell
+python -m pip install pre-commit detect-secrets
+```
+2) 初始化 baseline 並安裝 hooks：
+```powershell
+detect-secrets scan > .secrets.baseline
+pre-commit install
+pre-commit run --all-files
+```
+3) 我們已經新增一個便利腳本 `tools/install_precommit.ps1` 幫你自動安裝與建立 baseline（可在 PowerShell 執行）：
+```powershell
+.\tools\install_precommit.ps1
+```
+
+註記：如果你需要我們把 `detect-secrets` 的初始 baseline 做額外審查或排除特定檔案，請告訴我。
 
