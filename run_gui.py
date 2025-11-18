@@ -129,7 +129,7 @@ class App(tk.Tk):
 
         ttk.Label(frm, text="輸出檔案基底名稱：", style='Uniform.TLabel').grid(row=5, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.outbase_var = tk.StringVar(value="gsc_keyword_report")
-        ttk.Entry(frm, textvariable=self.outbase_var, width=30, style='Uniform.TEntry').grid(row=5, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Entry(frm, textvariable=self.outbase_var, width=30, style='Uniform.TEntry').grid(row=5, column=1, sticky=tk.W, padx=(8,8), pady=(2,2))
 
         # 輸出格式已移至下方按鈕列，預設值保留
         self.format_var = tk.StringVar(value='CSV')
@@ -463,8 +463,9 @@ class App(tk.Tk):
             messagebox.showinfo('無資料', '目前表格沒有資料可匯出')
             return
         fmt = self.format_var.get() if hasattr(self, 'format_var') else 'CSV'
+        # helper for default filename uses class method
         if fmt == 'CSV':
-            p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile=self.outbase_var.get() + '.csv')
+            p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile=self.get_export_filename('.csv'))
             if not p:
                 return
             try:
@@ -638,7 +639,19 @@ class App(tk.Tk):
 
     def export_row(self, values):
         try:
-            p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile='row_export.csv')
+            # default filename include base + today + range
+            def _row_default():
+                base = self.outbase_var.get().strip() or 'gsc_keyword_report'
+                now = datetime.now().strftime('%Y%m%d')
+                start = (self.start_var.get().strip() if hasattr(self, 'start_var') else '')
+                end = (self.end_var.get().strip() if hasattr(self, 'end_var') else '')
+                start_clean = start.replace('-', '') if start else ''
+                end_clean = end.replace('-', '') if end else ''
+                if start_clean and end_clean:
+                    return f"{base}_{now}查詢({start_clean}-{end_clean})_row.csv"
+                else:
+                    return f"{base}_{now}查詢_row.csv"
+            p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile=_row_default())
             if not p:
                 return
             with open(p, 'w', newline='', encoding='utf-8-sig') as fh:
@@ -650,7 +663,7 @@ class App(tk.Tk):
             self.append_log('匯出列失敗: ' + str(e))
         else:
             # Excel
-            p = filedialog.asksaveasfilename(defaultextension='.xlsx', filetypes=[('Excel','*.xlsx')], initialfile=self.outbase_var.get() + '.xlsx')
+            p = filedialog.asksaveasfilename(defaultextension='.xlsx', filetypes=[('Excel','*.xlsx')], initialfile=self.get_export_filename('.xlsx'))
             if not p:
                 return
             try:
@@ -772,6 +785,20 @@ class App(tk.Tk):
             # fallback to raw start-end
             return f'{start}~{end}'
 
+    def get_export_filename(self, ext='.csv') -> str:
+        base = self.outbase_var.get().strip() if hasattr(self, 'outbase_var') else 'gsc_keyword_report'
+        if not base:
+            base = 'gsc_keyword_report'
+        now = datetime.now().strftime('%Y%m%d')
+        start = (self.start_var.get().strip() if hasattr(self, 'start_var') else '')
+        end = (self.end_var.get().strip() if hasattr(self, 'end_var') else '')
+        start_clean = start.replace('-', '') if start else ''
+        end_clean = end.replace('-', '') if end else ''
+        if start_clean and end_clean:
+            return f"{base}_{now}查詢({start_clean}-{end_clean}){ext}"
+        else:
+            return f"{base}_{now}查詢{ext}"
+
 
     def on_run(self):
         prop = self.property_var.get().strip()
@@ -798,6 +825,12 @@ class App(tk.Tk):
         # set status to querying
         try:
             self.set_status('查詢中', 'green')
+            # start the animated dots for '查詢中'
+            try:
+                self._status_anim_running = True
+                self._status_anim_index = 0
+            except Exception:
+                pass
         except Exception:
             pass
         self.log.delete('1.0', tk.END)
@@ -819,7 +852,7 @@ class App(tk.Tk):
                         self.append_log(proc.stderr)
                     outputs.append(out)
                 else:
-                    out = base + '.xlsx'
+                    out = self.get_export_filename('.xlsx')
                     cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
                     if sa_path:
                         cmd.extend(['--service-account', sa_path])
@@ -844,6 +877,11 @@ class App(tk.Tk):
             except Exception as e:
                 self.append_log('Error: ' + str(e))
                 try:
+                    # stop status animation and show error
+                    try:
+                        self._status_anim_running = False
+                    except Exception:
+                        pass
                     self.set_status('錯誤', 'red')
                 except Exception:
                     pass
@@ -868,11 +906,39 @@ class App(tk.Tk):
                     except Exception:
                         desc = ''
                     status_text = f'查詢完成_{desc}' if desc else '查詢完成'
+                    # stop animation before setting final text
+                    try:
+                        self._status_anim_running = False
+                    except Exception:
+                        pass
                     self.set_status(status_text, 'blue')
                 except Exception:
                     pass
 
         threading.Thread(target=worker, daemon=True).start()
+        # animate status dots
+        try:
+            def _anim():
+                try:
+                    if not getattr(self, '_status_anim_running', False):
+                        return
+                    dots = '.' * (self._status_anim_index % 4)
+                    # keep the color/bootstyle as is, just change text while animating
+                    if hasattr(self, 'status_label'):
+                        try:
+                            if USE_TTB:
+                                self.status_label.configure(text=f'查詢中{dots}')
+                            else:
+                                self.status_label.config(text=f'查詢中{dots}')
+                        except Exception:
+                            pass
+                    self._status_anim_index += 1
+                    self.after(400, _anim)
+                except Exception:
+                    pass
+            _anim()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
