@@ -68,9 +68,6 @@ class App(tk.Tk):
         self.end_var = tk.StringVar(value=date.today().isoformat())
         ttk.Entry(frm, textvariable=self.end_var, width=20).grid(row=1, column=3, sticky=tk.W)
 
-        self.mock_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(frm, text="使用 mock 範例資料（不呼叫 GSC API）", variable=self.mock_var).grid(row=2, column=0, columnspan=2, sticky=tk.W)
-
         # preset ranges
         preset_frame = ttk.Frame(frm)
         preset_frame.grid(row=2, column=2, columnspan=2, sticky=tk.E)
@@ -119,29 +116,20 @@ class App(tk.Tk):
             self.status_label = tk.Label(frm, text='狀態：待命', bg='#808080', fg='white', padx=8, pady=2)
         self.status_label.grid(row=9, column=1, sticky=tk.W, padx=(8,0))
 
-        # statistics frame (right side)
-        stats_frame = ttk.Frame(frm, relief=tk.RIDGE)
-        stats_frame.grid(row=9, column=2, columnspan=2, sticky=tk.EW, padx=(8,0))
-        stats_frame.columnconfigure(0, weight=1)
-        ttk.Label(stats_frame, text='統計').grid(row=0, column=0, sticky=tk.W)
-        self.stat_kw_var = tk.StringVar(value='關鍵字數: 0')
-        self.stat_clicks_var = tk.StringVar(value='總點擊: 0')
-        self.stat_impr_var = tk.StringVar(value='總曝光: 0')
-        self.stat_pos_var = tk.StringVar(value='平均排名: -')
-        ttk.Label(stats_frame, textvariable=self.stat_kw_var).grid(row=1, column=0, sticky=tk.W)
-        ttk.Label(stats_frame, textvariable=self.stat_clicks_var).grid(row=2, column=0, sticky=tk.W)
-        ttk.Label(stats_frame, textvariable=self.stat_impr_var).grid(row=3, column=0, sticky=tk.W)
-        ttk.Label(stats_frame, textvariable=self.stat_pos_var).grid(row=4, column=0, sticky=tk.W)
+        # statistics placeholder (will be placed under Results)
+        self.stats_line_var = tk.StringVar(value='關鍵字數: 0  |  總點擊: 0  |  總曝光: 0  |  平均排名: -')
 
+        # results table frame (table below results and stats)
         self.table_frame = ttk.Frame(frm)
-        self.table_frame.grid(row=10, column=0, columnspan=4, sticky=tk.NSEW)
+        self.table_frame.grid(row=11, column=0, columnspan=4, sticky=tk.NSEW)
         frm.rowconfigure(10, weight=1)
+        frm.rowconfigure(11, weight=1)
 
         self.tree = None
         self.current_rows = []
         self.current_columns = []
         btn_frame = ttk.Frame(frm)
-        btn_frame.grid(row=11, column=0, columnspan=4, sticky=tk.W, pady=6)
+        btn_frame.grid(row=12, column=0, columnspan=4, sticky=tk.W, pady=6)
         # enlarge Run button style
         try:
             style = ttk.Style()
@@ -267,9 +255,45 @@ class App(tk.Tk):
             tree.insert('', tk.END, values=r)
 
         self.tree = tree
+
+        # update statistics line (single row, separated by |)
+        try:
+            kw_count = len(mapped_rows)
+            total_clicks = 0
+            total_impr = 0
+            pos_vals = []
+            for r in mapped_rows:
+                # clicks (col 1), impressions (col 2), position (col 3)
+                try:
+                    c = str(r[1]).replace(',', '')
+                    total_clicks += float(c) if c != '' else 0.0
+                except Exception:
+                    pass
+                try:
+                    im = str(r[2]).replace(',', '')
+                    total_impr += float(im) if im != '' else 0.0
+                except Exception:
+                    pass
+                try:
+                    p = float(str(r[3]).replace(',', ''))
+                    pos_vals.append(p)
+                except Exception:
+                    pass
+            avg_pos = round(sum(pos_vals) / len(pos_vals), 2) if pos_vals else '-'
+            stats_text = f'關鍵字數: {kw_count}  |  總點擊: {int(total_clicks)}  |  總曝光: {int(total_impr)}  |  平均排名: {avg_pos}'
+            self.stats_line_var.set(stats_text)
+        except Exception:
+            pass
         # after populating, enable table interactions (sorting, right-click, auto-width)
         try:
             self.setup_table_features()
+        except Exception:
+            pass
+
+        # place stats line below Results label and above table
+        try:
+            # stats label spans full width
+            ttk.Label(self.table_frame.master, textvariable=self.stats_line_var).grid(row=10, column=0, columnspan=4, sticky=tk.W, pady=(4,6))
         except Exception:
             pass
 
@@ -538,7 +562,7 @@ class App(tk.Tk):
         end = self.end_var.get().strip()
         kws = self.kws_var.get().strip() or 'allKeyWord_normalized.csv'
         base = self.outbase_var.get().strip() or 'gsc_keyword_report'
-        use_mock = self.mock_var.get()
+        # mock removed: always use service-account if provided
         fmt = self.format_var.get() if hasattr(self, 'format_var') else 'CSV'
 
         if not prop or not start or not end:
@@ -569,11 +593,8 @@ class App(tk.Tk):
                 if fmt == 'CSV':
                     out = base + '.csv'
                     cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
-                    if use_mock:
-                        cmd.append('--mock')
-                    else:
-                        if sa_path:
-                            cmd.extend(['--service-account', sa_path])
+                    if sa_path:
+                        cmd.extend(['--service-account', sa_path])
                     self.append_log('執行: ' + ' '.join(cmd))
                     proc = subprocess.run(cmd, capture_output=True, text=True)
                     self.append_log(proc.stdout)
@@ -583,11 +604,8 @@ class App(tk.Tk):
                 else:
                     out = base + '.xlsx'
                     cmd = [sys.executable, SCRIPT, '--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
-                    if use_mock:
-                        cmd.append('--mock')
-                    else:
-                        if sa_path:
-                            cmd.extend(['--service-account', sa_path])
+                    if sa_path:
+                        cmd.extend(['--service-account', sa_path])
                     self.append_log('執行: ' + ' '.join(cmd))
                     proc = subprocess.run(cmd, capture_output=True, text=True)
                     self.append_log(proc.stdout)
