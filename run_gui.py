@@ -21,6 +21,17 @@ from tkinter import ttk, filedialog, messagebox
 import csv
 from datetime import date, timedelta
 
+# Try to apply ttkbootstrap theme for modern dark UI. If not available,
+# we'll continue with standard ttk but log a hint to install it.
+USE_TTB = False
+try:
+    import ttkbootstrap as tb
+    TB_STYLE = tb.Style(theme='cyborg')
+    USE_TTB = True
+except Exception:
+    TB_STYLE = None
+
+
 
 SCRIPT = "gsc_keyword_report.py"
 
@@ -33,6 +44,16 @@ class App(tk.Tk):
 
         frm = ttk.Frame(self, padding=12)
         frm.pack(fill=tk.BOTH, expand=True)
+
+        # apply some global style tweaks when ttkbootstrap is available
+        try:
+            if USE_TTB and TB_STYLE:
+                TB_STYLE.configure('TLabel', font=('Segoe UI', 10))
+                TB_STYLE.configure('TEntry', font=('Segoe UI', 10))
+                TB_STYLE.configure('TButton', font=('Segoe UI', 10))
+                TB_STYLE.configure('Big.TButton', font=('Segoe UI', 11, 'bold'), padding=(16,10))
+        except Exception:
+            pass
 
         ttk.Label(frm, text="Search Console 屬性 (URL)：").grid(row=0, column=0, sticky=tk.W)
         self.property_var = tk.StringVar(value="https://pm.shiny.com.tw/")
@@ -91,7 +112,10 @@ class App(tk.Tk):
         ttk.Label(frm, text="結果：").grid(row=9, column=0, sticky=tk.W, pady=(8,0))
         # status label (left of results)
         self.status_var = tk.StringVar(value='待命')
-        self.status_label = tk.Label(frm, text='狀態：待命', bg='#808080', fg='white', padx=8, pady=2)
+        if USE_TTB:
+            self.status_label = tb.Label(frm, text='狀態：待命', bootstyle='secondary', padding=(6,2))
+        else:
+            self.status_label = tk.Label(frm, text='狀態：待命', bg='#808080', fg='white', padx=8, pady=2)
         self.status_label.grid(row=9, column=1, sticky=tk.W, padx=(8,0))
 
         # statistics frame (right side)
@@ -124,16 +148,26 @@ class App(tk.Tk):
         except Exception:
             pass
 
-        self.save_btn = ttk.Button(btn_frame, text="輸出檔案", command=self.export_csv)
+        # if ttkbootstrap is present, use its Button for nicer style
+        if USE_TTB:
+            self.save_btn = tb.Button(btn_frame, text="輸出檔案", command=self.export_csv, bootstyle='primary-outline')
+        else:
+            self.save_btn = ttk.Button(btn_frame, text="輸出檔案", command=self.export_csv)
         self.save_btn.grid(row=0, column=0, padx=(0,8))
-        self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
+        if USE_TTB:
+            self.clear_btn = tb.Button(btn_frame, text="清除表格", command=self.clear_table, bootstyle='secondary')
+        else:
+            self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
         self.clear_btn.grid(row=0, column=1, padx=(0,8))
         # autoload toggle
         self.autoload_var = tk.BooleanVar(value=True)
         self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV', variable=self.autoload_var)
         self.autoload_cb.grid(row=0, column=3, padx=(8,8))
         # Run button bigger and styled
-        self.run_btn_big = ttk.Button(btn_frame, text="執行報表", command=self.on_run, style='Big.TButton')
+        if USE_TTB:
+            self.run_btn_big = tb.Button(btn_frame, text="執行報表", command=self.on_run, bootstyle='success')
+        else:
+            self.run_btn_big = ttk.Button(btn_frame, text="執行報表", command=self.on_run, style='Big.TButton')
         self.run_btn_big.grid(row=0, column=2, padx=(12,8))
 
         # start file watcher to auto-load CSV created externally
@@ -276,14 +310,28 @@ class App(tk.Tk):
     def set_status(self, text: str, color: str):
         # thread-safe status update
         def _update():
-            # map basic color names to hex for better visibility
-            color_map = {
-                'green': '#2e7d32',
-                'blue': '#1565c0',
-                'red': '#c62828'
-            }
-            bg = color_map.get(color, color if color and color.startswith('#') else '#808080')
-            self.status_label.config(text=f'狀態：{text}', bg=bg)
+            # map basic color names to bootstyle if ttkbootstrap, else hex
+            if USE_TTB:
+                # tb supports bootstyle names like 'success', 'info', 'danger'
+                bs = 'secondary'
+                if color == 'green':
+                    bs = 'success'
+                elif color == 'blue':
+                    bs = 'info'
+                elif color == 'red':
+                    bs = 'danger'
+                try:
+                    self.status_label.configure(text=f'狀態：{text}', bootstyle=bs)
+                except Exception:
+                    self.status_label.config(text=f'狀態：{text}')
+            else:
+                color_map = {
+                    'green': '#2e7d32',
+                    'blue': '#1565c0',
+                    'red': '#c62828'
+                }
+                bg = color_map.get(color, color if color and color.startswith('#') else '#808080')
+                self.status_label.config(text=f'狀態：{text}', bg=bg)
         try:
             self.after(0, _update)
         except Exception:
