@@ -228,6 +228,14 @@ class App(tk.Tk):
             self.start_file_watcher()
         except Exception:
             pass
+        # clear last_preset if user edits start/end manually
+        try:
+            def _clear_preset(*args):
+                self.last_preset = None
+            self.start_var.trace_add('write', _clear_preset)
+            self.end_var.trace_add('write', _clear_preset)
+        except Exception:
+            pass
 
     def browse_kws(self):
         p = filedialog.askopenfilename(initialdir='.', filetypes=[('CSV files','*.csv'),('All files','*.*')])
