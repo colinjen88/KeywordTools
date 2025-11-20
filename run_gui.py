@@ -60,6 +60,11 @@ class App(tk.Tk):
             style.configure('Uniform.TButton', font=('Segoe UI', 10), padding=(8, 4))
             style.configure('Uniform.TLabel', font=('Segoe UI', 10))
             style.configure('Uniform.TCombobox', font=('Segoe UI', 10), padding=(6, 4))
+            # Custom styles for preset buttons
+            style.configure('Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#efefef', foreground='#1565c0')
+            style.map('Preset.TButton', background=[('active', '#e0e0e0')], foreground=[('active', '#1565c0')])
+            style.configure('Selected.Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#1565c0', foreground='white')
+            style.map('Selected.Preset.TButton', background=[('active', '#0d47a1')], foreground=[('active', 'white')])
         except Exception:
             style = None
 
@@ -109,28 +114,38 @@ class App(tk.Tk):
         ttk.Entry(frm, textvariable=self.end_var, width=20, style='Uniform.TEntry').grid(row=1, column=3, sticky=tk.W, padx=(4,4), pady=(8,8))
 
         # preset ranges
-        # place preset buttons aligned to the start-date entry's left side
         preset_frame = ttk.Frame(frm)
         preset_frame.grid(row=2, column=1, columnspan=3, sticky=tk.W, padx=(8,8), pady=(0,0))
-        # remove the "快速區間：" label; align buttons under start-date
-        ttk.Button(preset_frame, text="近7天", command=lambda: self.set_preset(7), style='Uniform.TButton').grid(row=0, column=0, padx=(4,4))
-        ttk.Button(preset_frame, text="近30天", command=lambda: self.set_preset(30), style='Uniform.TButton').grid(row=0, column=1, padx=(4,4))
-        ttk.Button(preset_frame, text="近1季", command=lambda: self.set_preset(90), style='Uniform.TButton').grid(row=0, column=2, padx=(4,4))
-        ttk.Button(preset_frame, text="近1年", command=lambda: self.set_preset(365), style='Uniform.TButton').grid(row=0, column=3, padx=(4,4))
-        # add last month preset
-        ttk.Button(preset_frame, text="上個月", command=self.set_preset_last_month, style='Uniform.TButton').grid(row=0, column=4, padx=(4,4))
+        
+        self.preset_btns = {}
+        presets = [
+            ("日期區間", None),
+            ("近7天", 7),
+            ("近30天", 30),
+            ("近1季", 90),
+            ("近1年", 365),
+            ("上個月", -1)
+        ]
+        
+        for idx, (label, val) in enumerate(presets):
+            cmd = lambda l=label, v=val: self.on_preset_click(l, v)
+            btn = ttk.Button(preset_frame, text=label, command=cmd, style='Preset.TButton')
+            btn.grid(row=0, column=idx, padx=(2,2))
+            self.preset_btns[label] = btn
+            
+        self.update_preset_visuals("日期區間")
 
         ttk.Label(frm, text="關鍵字檔案：", style='Uniform.TLabel').grid(row=3, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.kws_var = tk.StringVar(value="allKeyWord_normalized.csv")
         ttk.Entry(frm, textvariable=self.kws_var, width=40, style='Uniform.TEntry').grid(row=3, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
         ttk.Button(frm, text="Browse", command=self.browse_kws, style='Uniform.TButton').grid(row=3, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
 
-        ttk.Label(frm, text="Service account JSON（選填）：", style='Uniform.TLabel').grid(row=4, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Label(frm, text="Service account JSON：", style='Uniform.TLabel').grid(row=4, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.sa_var = tk.StringVar(value="")
         ttk.Entry(frm, textvariable=self.sa_var, width=40, style='Uniform.TEntry').grid(row=4, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
         ttk.Button(frm, text="瀏覽", command=self.browse_sa, style='Uniform.TButton').grid(row=4, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
 
-        ttk.Label(frm, text="輸出檔案基底名稱：", style='Uniform.TLabel').grid(row=5, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Label(frm, text="輸出檔名前綴：", style='Uniform.TLabel').grid(row=5, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.outbase_var = tk.StringVar(value="gsc_keyword_report")
         ttk.Entry(frm, textvariable=self.outbase_var, width=30, style='Uniform.TEntry').grid(row=5, column=1, sticky=tk.W, padx=(8,8), pady=(2,2))
 
@@ -165,6 +180,7 @@ class App(tk.Tk):
         try:
             # keep Results label and status close together
             self.status_label.pack(side='left', padx=(4,0))
+            self.progress = ttk.Progressbar(results_frame, mode='indeterminate', length=100)
         except Exception:
             self.status_label.grid(row=0, column=1, sticky=tk.W, padx=(8,0))
 
@@ -233,12 +249,37 @@ class App(tk.Tk):
             pass
         # clear last_preset if user edits start/end manually
         try:
+            self.ignore_trace = False
             def _clear_preset(*args):
+                if getattr(self, 'ignore_trace', False):
+                    return
                 self.last_preset = None
+                self.update_preset_visuals("日期區間")
             self.start_var.trace_add('write', _clear_preset)
             self.end_var.trace_add('write', _clear_preset)
         except Exception:
             pass
+
+    def on_preset_click(self, label, days):
+        self.update_preset_visuals(label)
+        if days is None:
+            return
+        self.ignore_trace = True
+        try:
+            if days == -1:
+                self.set_preset_last_month()
+            else:
+                self.set_preset(days)
+        finally:
+            self.ignore_trace = False
+
+    def update_preset_visuals(self, selected_label):
+        self.current_preset_label = selected_label
+        for label, btn in self.preset_btns.items():
+            if label == selected_label:
+                btn.configure(style='Selected.Preset.TButton')
+            else:
+                btn.configure(style='Preset.TButton')
 
     def browse_kws(self):
         p = filedialog.askopenfilename(initialdir='.', filetypes=[('CSV files','*.csv'),('All files','*.*')])
@@ -356,7 +397,11 @@ class App(tk.Tk):
             # keyword
             mapped.append(r[idx_keyword] if idx_keyword is not None and idx_keyword < len(r) else '')
             # position
-            mapped.append(r[idx_pos] if idx_pos is not None and idx_pos < len(r) else '')
+            try:
+                pv = float(str(r[idx_pos]).replace(',',''))
+                mapped.append(str(round(pv, 1)))
+            except Exception:
+                mapped.append(r[idx_pos] if idx_pos is not None and idx_pos < len(r) else '')
             # clicks
             mapped.append(r[idx_clicks] if idx_clicks is not None and idx_clicks < len(r) else '')
             # impressions
@@ -392,10 +437,10 @@ class App(tk.Tk):
         vsb = ttk.Scrollbar(self.table_frame, orient='vertical', command=tree.yview)
         hsb = ttk.Scrollbar(self.table_frame, orient='horizontal', command=tree.xview)
         tree.configure(yscroll=vsb.set, xscroll=hsb.set)
-        tree.grid(row=1, column=0, sticky='nsew')
-        vsb.grid(row=1, column=1, sticky='ns')
-        hsb.grid(row=2, column=0, sticky='ew')
-        self.table_frame.rowconfigure(1, weight=1)
+        tree.grid(row=2, column=0, sticky='nsew')
+        vsb.grid(row=2, column=1, sticky='ns')
+        hsb.grid(row=3, column=0, sticky='ew')
+        self.table_frame.rowconfigure(2, weight=1)
         self.table_frame.columnconfigure(0, weight=1)
 
         # style headings (dark background + white text)
@@ -457,7 +502,7 @@ class App(tk.Tk):
                     pos_vals.append(p)
                 except Exception:
                     pass
-            avg_pos = round(sum(pos_vals) / len(pos_vals), 2) if pos_vals else '-'
+            avg_pos = round(sum(pos_vals) / len(pos_vals), 1) if pos_vals else '-'
             stats_text = f'關鍵字數: {kw_count}  |  總點擊: {int(total_clicks)}  |  總曝光: {int(total_impr)}  |  平均排名: {avg_pos}'
             self.stats_line_var.set(stats_text)
         except Exception:
@@ -538,15 +583,24 @@ class App(tk.Tk):
             if getattr(self, 'filter_frame', None):
                 self.filter_frame.destroy()
             self.filter_frame = ttk.Frame(self.table_frame)
-            self.filter_frame.grid(row=0, column=0, sticky='ew', pady=(0,4))
+            self.filter_frame.grid(row=1, column=0, sticky='ew', pady=(0,4))
             ttk.Label(self.filter_frame, text='欄位篩選：').grid(row=0, column=0, sticky=tk.W)
+            
             self.filter_col_var = tk.StringVar(value=self.current_columns[0] if self.current_columns else '')
             col_combo = ttk.Combobox(self.filter_frame, textvariable=self.filter_col_var, values=self.current_columns, state='readonly', width=12)
             col_combo.grid(row=0, column=1, padx=4)
+            col_combo.bind('<<ComboboxSelected>>', self.on_filter_col_change)
+            
+            self.filter_op_var = tk.StringVar(value='>')
+            self.op_combo = ttk.Combobox(self.filter_frame, textvariable=self.filter_op_var, values=['>', '=', '<'], state='readonly', width=3)
+            self.op_combo.grid(row=0, column=2, padx=2)
+            
             self.filter_val_var = tk.StringVar()
-            ttk.Entry(self.filter_frame, textvariable=self.filter_val_var, width=24).grid(row=0, column=2, padx=4)
-            ttk.Button(self.filter_frame, text='套用', command=self.apply_filter).grid(row=0, column=3, padx=4)
-            ttk.Button(self.filter_frame, text='清除', command=self.clear_filter).grid(row=0, column=4, padx=4)
+            ttk.Entry(self.filter_frame, textvariable=self.filter_val_var, width=24).grid(row=0, column=3, padx=4)
+            ttk.Button(self.filter_frame, text='套用', command=self.apply_filter).grid(row=0, column=4, padx=4)
+            ttk.Button(self.filter_frame, text='清除', command=self.clear_filter).grid(row=0, column=5, padx=4)
+            
+            self.on_filter_col_change()
         except Exception:
             pass
 
@@ -614,25 +668,58 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    def on_filter_col_change(self, event=None):
+        col = self.filter_col_var.get()
+        # Show operator only for numeric columns (not Keyword)
+        # Numeric columns: 排名, 點擊, 曝光, 點擊率
+        if col in ('排名', '點擊', '曝光', '點擊率'):
+            try:
+                self.op_combo.config(state='readonly')
+            except: pass
+        else:
+            try:
+                self.op_combo.config(state='disabled')
+            except: pass
+
     def apply_filter(self):
         col = self.filter_col_var.get()
-        val = self.filter_val_var.get().strip().lower()
-        if not col or val == '':
+        op = self.filter_op_var.get()
+        val_str = self.filter_val_var.get().strip().lower()
+        if not col or val_str == '':
             return
-        # filter current_rows and reload tree
         try:
             filtered = []
             idx = self.current_columns.index(col)
+            is_numeric = col in ('排名', '點擊', '曝光', '點擊率')
+            
             for r in self.current_rows:
-                if idx < len(r) and val in str(r[idx]).lower():
-                    filtered.append(r)
+                if idx >= len(r): continue
+                cell_val = str(r[idx])
+                
+                if col == '關鍵字' or not is_numeric:
+                    if val_str in cell_val.lower():
+                        filtered.append(r)
+                else:
+                    # Numeric comparison
+                    try:
+                        c_num = float(cell_val.replace(',', '').replace('%', ''))
+                        v_num = float(val_str)
+                        match = False
+                        if op == '>': match = c_num > v_num
+                        elif op == '=': match = abs(c_num - v_num) < 1e-9
+                        elif op == '<': match = c_num < v_num
+                        if match:
+                            filtered.append(r)
+                    except:
+                        pass
+            
             # clear tree
             for it in self.tree.get_children():
                 self.tree.delete(it)
             for idx, r in enumerate(filtered):
                 tag = 'even' if idx % 2 == 0 else 'odd'
                 self.tree.insert('', tk.END, values=r, tags=(tag,))
-            self.append_log(f'已套用篩選：{col} 包含 "{val}"（{len(filtered)} 筆）')
+            self.append_log(f'已套用篩選：{col} {op if is_numeric else "包含"} "{val_str}"（{len(filtered)} 筆）')
         except Exception as e:
             self.append_log('篩選失敗: ' + str(e))
 
@@ -929,10 +1016,9 @@ class App(tk.Tk):
         # set status to querying
         try:
             self.set_status('查詢中', 'green')
-            # start the animated dots for '查詢中'
             try:
-                self._status_anim_running = True
-                self._status_anim_index = 0
+                self.progress.pack(side='left', padx=(8,0))
+                self.progress.start(10)
             except Exception:
                 pass
         except Exception:
@@ -1058,6 +1144,15 @@ class App(tk.Tk):
                 self.set_status('錯誤', 'red')
             finally:
                 try:
+                    def _stop_prog():
+                        try:
+                            self.progress.stop()
+                            self.progress.pack_forget()
+                        except: pass
+                    self.after(0, _stop_prog)
+                except Exception:
+                    pass
+                try:
                     self.run_btn_big.config(state=tk.NORMAL)
                 except Exception:
                     pass
@@ -1071,29 +1166,7 @@ class App(tk.Tk):
                     pass
 
         threading.Thread(target=worker, daemon=True).start()
-        # animate status dots
-        try:
-            def _anim():
-                try:
-                    if not getattr(self, '_status_anim_running', False):
-                        return
-                    dots = '.' * (self._status_anim_index % 4)
-                    # keep the color/bootstyle as is, just change text while animating
-                    if hasattr(self, 'status_label'):
-                        try:
-                            if USE_TTB:
-                                self.status_label.configure(text=f'查詢中{dots}')
-                            else:
-                                self.status_label.config(text=f'查詢中{dots}')
-                        except Exception:
-                            pass
-                    self._status_anim_index += 1
-                    self.after(400, _anim)
-                except Exception:
-                    pass
-            _anim()
-        except Exception:
-            pass
+
 
 
 if __name__ == '__main__':
