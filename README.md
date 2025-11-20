@@ -58,10 +58,14 @@ python run_gui.py
 
 GUI 功能說明：
 - `Property`：輸入 Search Console 的完整 property URL（例如：`https://pm.shiny.com.tw/`）。
-- `Start date` / `End date`：查詢期間（格式 YYYY-MM-DD）。
+- `起始日期` / `結束日期`：查詢期間（格式 YYYY-MM-DD），欄位間距已縮窄，兩欄更緊湊。
+- `日期區間`快選：點選後會跳出月曆視窗，可直接在同一個月曆上點兩天選擇區間，按「套用」後會自動填入起訖日期。
+- 其他快選按鈕（近7天、近30天、近1季、近1年、上個月）：可一鍵帶入對應日期區間。
 - `Keywords file`：預設使用 `allKeyWord_normalized.csv`（若尚未產生請先執行 `normalize_keywords.py`）。
 - `Use mock data`：勾選會用模擬資料（不需 GSC 認證），方便先測試整套流程。
 - `CSV` / `Excel (.xlsx)`：選擇輸出格式；若要輸出 Excel，請先安裝 `pandas` 與 `openpyxl`。
+- 欄位篩選：可針對「關鍵字」做文字包含查詢，針對數字欄位（排名、點擊、曝光、點擊率）可選擇 > = < 並輸入數值進行條件篩選。
+- 快選按鈕與表格標題列顏色已優化：選取中按鈕為藍底白字，表頭為深藍底白字。
 
 補充說明：
 - 自動載入 CSV：在 GUI 右下的按鈕列中有一個勾選框 `自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）`。若勾選，GUI 會監控當前工作目錄（repo 根目錄）中最新的 `.csv` 檔案，當檔案新產生或修改時會自動載入表格顯示（適合在外部執行 CLI 並讓 GUI 自動顯示結果）。可取消勾選以避免自動載入。

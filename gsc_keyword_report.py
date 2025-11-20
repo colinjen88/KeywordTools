@@ -6,14 +6,20 @@ gsc_keyword_report.py
 輸入一份關鍵字清單 (CSV)，輸出包含每個關鍵字最新或指定期間的數據。
 
 支援兩種認證方式：
-- Service Account (使用 `gsc-keyword-query-*.json`，可選擇委派 `subject`)
-- OAuth InstalledAppFlow (若未提供 service account 檔)
 
 用法（簡單）:
   python gsc_keyword_report.py --property "https://example.com" --keywords allKeyWord.csv --start-date 2025-10-01 --end-date 2025-10-31
 
 請先參考 README.md 進行 API 設定。
 """
+# for PyInstaller: 強制 import 重要 Google API 子模組，避免 frozen exe 缺包
+try:
+    import googleapiclient.discovery
+    import googleapiclient.errors
+    import google.oauth2.service_account
+    import google.auth.transport.requests
+except ImportError:
+    pass
 import argparse
 import csv
 import os
@@ -69,7 +75,10 @@ def fetch_bulk_queries(service, site_url, start_date, end_date, row_limit=25000)
     rows = resp.get("rows", [])
     result = {}
     for r in rows:
-        key = r.get("keys", [])[0]
+        keys = r.get("keys", [])
+        if not keys:
+            continue
+        key = keys[0]
         result[key.lower()] = {
             "query": key,
             "clicks": r.get("clicks", 0),
@@ -97,10 +106,26 @@ def fetch_exact_query(service, site_url, start_date, end_date, keyword):
     resp = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
     rows = resp.get("rows", [])
     if not rows:
-        return None
+        # 修正：即使沒有數據，也回傳包含查詢關鍵字的 dict，確保關鍵字不遺失
+        return {
+            "query": keyword,
+            "clicks": 0,
+            "impressions": 0,
+            "position": 0.0,
+        }
     r = rows[0]
+    # 確認回傳的 query 與輸入的 keyword 相符
+    keys = r.get("keys", [])
+    if not keys:
+        return {
+            "query": keyword,
+            "clicks": 0,
+            "impressions": 0,
+            "position": 0.0,
+        }
+    query_val = keys[0]
     return {
-        "query": r.get("keys", [])[0],
+        "query": query_val,
         "clicks": r.get("clicks", 0),
         "impressions": r.get("impressions", 0),
         "position": r.get("position", 0.0),
@@ -108,24 +133,16 @@ def fetch_exact_query(service, site_url, start_date, end_date, keyword):
 
 
 def load_keywords(path):
-    # 支援兩種常見格式：
-    # 1) 每列一個關鍵字 (no header)
-    # 2) 單列、逗號分隔的一長串關鍵字（例如你上傳的檔案）
+    # 修正：處理好多列的逗號分隔關鍵字
     kws = []
     with open(path, newline="", encoding="utf-8-sig") as fh:
         reader = csv.reader(fh)
-        rows = list(reader)
-        if not rows:
-            return []
-        # 若只有一列且該列第一欄包含逗號，則以逗號切分
-        if len(rows) == 1 and "," in rows[0][0]:
-            parts = [p.strip() for p in rows[0][0].split(",") if p.strip()]
-            return parts
-        # 否則採用每列第一欄為關鍵字
-        for row in rows:
+        for row in reader:
             if not row:
                 continue
-            kws.append(row[0].strip())
+            # 對每一列的第一個元素進行逗號切分
+            parts = [p.strip() for p in row[0].split(',') if p.strip()]
+            kws.extend(parts)
     return kws
 
 

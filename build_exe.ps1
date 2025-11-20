@@ -40,6 +40,11 @@ if ($OneFile) { $pyArgs += '--onefile' }
 if ($NoConsole) { $pyArgs += '--noconsole' }
 $pyArgs += "--name"; $pyArgs += $ExeName
 
+# 強制收錄所有 Google API 子模組與資源
+$pyArgs += "--collect-all"; $pyArgs += "googleapiclient"
+$pyArgs += "--collect-all"; $pyArgs += "google.oauth2"
+$pyArgs += "--collect-all"; $pyArgs += "google.auth"
+
 # Hidden imports may help include dynamic imports (ttkbootstrap etc.)
 $pyArgs += "--hidden-import"; $pyArgs += "ttkbootstrap"
 # 'ttk' is part of tkinter; ensure tkinter.ttk is included
@@ -54,6 +59,17 @@ $pyArgs += "--hidden-import"; $pyArgs += "google.oauth2"
 $pyArgs += "--hidden-import"; $pyArgs += "googleapiclient"
 $pyArgs += "--hidden-import"; $pyArgs += "google_auth_oauthlib"
 $pyArgs += "--hidden-import"; $pyArgs += "google.auth"
+
+# 補充 Google API 子模組，避免 PyInstaller 漏包
+$pyArgs += "--hidden-import"; $pyArgs += "googleapiclient.discovery"
+$pyArgs += "--hidden-import"; $pyArgs += "googleapiclient.errors"
+$pyArgs += "--hidden-import"; $pyArgs += "google.oauth2.service_account"
+$pyArgs += "--hidden-import"; $pyArgs += "google.auth.transport.requests"
+
+# 強制收錄所有 Google API 子模組
+$pyArgs += "--collect-submodules"; $pyArgs += "googleapiclient"
+$pyArgs += "--collect-submodules"; $pyArgs += "google.oauth2"
+$pyArgs += "--collect-submodules"; $pyArgs += "google.auth"
 
 if ($IconPath -and (Test-Path $IconPath)) {
     Write-Info "Using icon: $IconPath"

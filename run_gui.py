@@ -441,19 +441,19 @@ class App(tk.Tk):
             total_impr = 0
             pos_vals = []
             for r in mapped_rows:
-                # clicks (col 1), impressions (col 2), position (col 3)
+                # clicks (col 2), impressions (col 3), position (col 1)
                 try:
-                    c = str(r[1]).replace(',', '')
+                    c = str(r[2]).replace(',', '')
                     total_clicks += float(c) if c != '' else 0.0
                 except Exception:
                     pass
                 try:
-                    im = str(r[2]).replace(',', '')
+                    im = str(r[3]).replace(',', '')
                     total_impr += float(im) if im != '' else 0.0
                 except Exception:
                     pass
                 try:
-                    p = float(str(r[3]).replace(',', ''))
+                    p = float(str(r[1]).replace(',', ''))
                     pos_vals.append(p)
                 except Exception:
                     pass
@@ -538,7 +538,7 @@ class App(tk.Tk):
             if getattr(self, 'filter_frame', None):
                 self.filter_frame.destroy()
             self.filter_frame = ttk.Frame(self.table_frame)
-            self.filter_frame.grid(row= -1, column=0, sticky='ew', pady=(0,4))
+            self.filter_frame.grid(row=0, column=0, sticky='ew', pady=(0,4))
             ttk.Label(self.filter_frame, text='欄位篩選：').grid(row=0, column=0, sticky=tk.W)
             self.filter_col_var = tk.StringVar(value=self.current_columns[0] if self.current_columns else '')
             col_combo = ttk.Combobox(self.filter_frame, textvariable=self.filter_col_var, values=self.current_columns, state='readonly', width=12)
@@ -904,7 +904,7 @@ class App(tk.Tk):
         sa_path = self.sa_var.get().strip() if hasattr(self, 'sa_var') else ''
         if not sa_path:
             # no service account provided -> show error and refuse to run
-            messagebox.showerror('缺少 Service Account', '為了安全，必須在此指定 Service Account JSON 檔案的路徑，或使用 OAuth。請選擇一個有效的憑證檔案。')
+            messagebox.showerror('缺少 Service Account', '請選擇您的 Google Service Account 憑證檔案。程式需要此檔案才能向 Google 查詢資料。\n\n請點擊「Service account JSON」旁邊的「瀏覽」按鈕來選擇您的 .json 檔案。')
             return
         # if the file is inside repo, warn the user (avoid committing credentials)
         try:
@@ -943,16 +943,26 @@ class App(tk.Tk):
             try:
                 outputs = []
                 sa_path = self.sa_var.get().strip() if hasattr(self, 'sa_var') else ''
-                # Decide output based on selected format
                 out_ext = '.csv' if fmt == 'CSV' else '.xlsx'
                 out = self.get_export_filename(out_ext)
-                # Build args for CLI
                 cli_args = ['--property', prop, '--keywords', kws, '--start-date', start, '--end-date', end, '--output', out]
                 if sa_path:
                     cli_args.extend(['--service-account', sa_path])
 
-                # Prefer importing and running the CLI module in-process (avoids new console windows)
-                # Try import and call main() even when frozen; fallback to subprocess if import is not possible.
+                # log 查詢參數
+                self.append_log(f'查詢參數: property={prop}, keywords={kws}, start={start}, end={end}, output={out}, service-account={sa_path}')
+                # 檢查關鍵檔案是否存在
+                if not os.path.exists(kws):
+                    self.append_log(f'關鍵字檔案不存在: {kws}')
+                    self.set_status('錯誤', 'red')
+                    return
+                if sa_path and not os.path.exists(sa_path):
+                    self.append_log(f'Service Account 檔案不存在: {sa_path}')
+                    self.set_status('錯誤', 'red')
+                    return
+
+                script_exit_code = 1  # 預設為失敗
+
                 try:
                     import importlib, io, traceback
                     module = importlib.import_module('gsc_keyword_report')
@@ -962,9 +972,9 @@ class App(tk.Tk):
                     imported_cli = False
                     err_tb = traceback.format_exc()
                     self.append_log('無法 import gsc_keyword_report，將 fallback 到 subprocess；錯誤詳情:\n' + err_tb)
+                
                 if imported_cli:
                     try:
-                        # run module.main() with replaced sys.argv to pass the CLI args
                         old_argv = sys.argv
                         sys.argv = [old_argv[0]] + cli_args
                         buf_out = io.StringIO()
@@ -974,9 +984,11 @@ class App(tk.Tk):
                             sys.stdout, sys.stderr = buf_out, buf_err
                             try:
                                 module.main()
+                                script_exit_code = 0  # 執行成功
                             except SystemExit as e:
-                                # main() may call sys.exit() on errors; capture and continue
-                                self.append_log(f'gsc_keyword_report exited with code: {getattr(e, "code", None)}')
+                                code = getattr(e, "code", 1)
+                                self.append_log(f'gsc_keyword_report exited with code: {code}')
+                                script_exit_code = code if code is not None else 1
                         finally:
                             sys.stdout, sys.stderr = old_stdout, old_stderr
                             sys.argv = old_argv
@@ -988,36 +1000,18 @@ class App(tk.Tk):
                             self.append_log(err_text)
                         outputs.append(out)
                     except Exception as e:
-                        self.append_log('無法以模組方式執行 CLI，改為 subprocess: ' + str(e))
-                        # fall back to subprocess
-                        interpreter = sys.executable
-                        script_path = SCRIPT
-                        if not os.path.exists(script_path):
-                            # fall back to bundled path or absolute
-                            candidate = os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)), SCRIPT) if getattr(sys, 'frozen', False) else None
-                            if candidate and os.path.exists(candidate):
-                                script_path = candidate
-                        cmd = [interpreter, script_path] + cli_args
-                        # hide console window on Windows
-                        kwargs = {'capture_output': True, 'text': True}
-                        if os.name == 'nt':
-                            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                        self.append_log('執行: ' + ' '.join(cmd))
-                        proc = subprocess.run(cmd, **kwargs)
-                        self.append_log(proc.stdout)
-                        if proc.stderr:
-                            self.append_log(proc.stderr)
-                        outputs.append(out)
-                else:
-                    # Frozen exe: use system python (avoids relaunching the same exe) and hide created console
-                    interpreter = os.environ.get('PYTHON_EXE', 'python')
+                        self.append_log('無法以模組方式執行 CLI: ' + str(e))
+                        script_exit_code = 1 # 執行失敗
+                
+                if not imported_cli:
+                    interpreter = sys.executable
                     script_path = SCRIPT
                     if not os.path.exists(script_path):
-                        candidate = os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)), SCRIPT)
-                        if os.path.exists(candidate):
+                        candidate = os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)), SCRIPT) if getattr(sys, 'frozen', False) else None
+                        if candidate and os.path.exists(candidate):
                             script_path = candidate
                     cmd = [interpreter, script_path] + cli_args
-                    kwargs = {'capture_output': True, 'text': True}
+                    kwargs = {'capture_output': True, 'text': True, 'encoding': 'utf-8'}
                     if os.name == 'nt':
                         kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
                     self.append_log('執行: ' + ' '.join(cmd))
@@ -1026,29 +1020,42 @@ class App(tk.Tk):
                     if proc.stderr:
                         self.append_log(proc.stderr)
                     outputs.append(out)
+                    script_exit_code = proc.returncode
 
-                for f in outputs:
-                    if os.path.exists(f):
-                        self.append_log(f'Generated: {f}')
-                        # if CSV, load into table
-                        if f.lower().endswith('.csv'):
-                            try:
-                                self.load_csv_into_table(f)
-                            except Exception as e:
-                                self.append_log('Failed to load CSV into table: ' + str(e))
+                if script_exit_code == 0:
+                    any_success = False
+                    for f in outputs:
+                        if os.path.exists(f):
+                            self.append_log(f'Generated: {f}')
+                            any_success = True
+                            if f.lower().endswith('.csv'):
+                                try:
+                                    self.load_csv_into_table(f)
+                                except Exception as e:
+                                    self.append_log('Failed to load CSV into table: ' + str(e))
+                        else:
+                            self.append_log(f'Failed to generate: {f}')
+                    
+                    if any_success:
+                        try:
+                            if getattr(self, 'last_preset', None):
+                                desc = self.last_preset
+                            else:
+                                desc = self.format_range_label(start, end)
+                        except Exception:
+                            desc = ''
+                        status_text = f'查詢完成_{desc}' if desc else '查詢完成'
+                        self.set_status(status_text, 'blue')
                     else:
-                        self.append_log(f'Failed to generate: {f}')
-            except Exception as e:
-                self.append_log('Error: ' + str(e))
-                try:
-                    # stop status animation and show error
-                    try:
-                        self._status_anim_running = False
-                    except Exception:
-                        pass
+                        self.set_status('錯誤', 'red')
+                else:
                     self.set_status('錯誤', 'red')
-                except Exception:
-                    pass
+
+            except Exception as e:
+                import traceback
+                self.append_log('Error: ' + str(e))
+                self.append_log(traceback.format_exc())
+                self.set_status('錯誤', 'red')
             finally:
                 try:
                     self.run_btn_big.config(state=tk.NORMAL)
@@ -1058,24 +1065,8 @@ class App(tk.Tk):
                     self.run_btn.config(state=tk.NORMAL)
                 except Exception:
                     pass
-                # if no exception, set completed (if not already set to error)
                 try:
-                    # include range/preset description in status
-                    try:
-                        # prefer last_preset if user clicked preset
-                        if getattr(self, 'last_preset', None):
-                            desc = self.last_preset
-                        else:
-                            desc = self.format_range_label(start, end)
-                    except Exception:
-                        desc = ''
-                    status_text = f'查詢完成_{desc}' if desc else '查詢完成'
-                    # stop animation before setting final text
-                    try:
-                        self._status_anim_running = False
-                    except Exception:
-                        pass
-                    self.set_status(status_text, 'blue')
+                    self._status_anim_running = False
                 except Exception:
                     pass
 
