@@ -27,11 +27,12 @@ from datetime import datetime
 # Try to import ttkbootstrap for modern theming. Style will be created
 # in the App __init__ (bound to the existing Tk root) to avoid creating
 # a second hidden root window.
-USE_TTB = False
+USE_TTB = True
 try:
     import ttkbootstrap as tb
-    USE_TTB = True
+    from ttkbootstrap.constants import *
 except Exception:
+    USE_TTB = False
     tb = None
 
 
@@ -76,42 +77,56 @@ class App(tk.Tk):
                 pass
         # make column 2 (between start and end inputs) have a smaller min width to reduce large gaps
         try:
-            frm.columnconfigure(2, minsize=8)
+            frm.columnconfigure(2, minsize=0)
         except Exception:
             pass
 
         # initialize ttkbootstrap Style bound to this root (avoid extra root)
-        try:
-            if USE_TTB and tb is not None:
+        # initialize ttkbootstrap Style bound to this root (avoid extra root)
+        if USE_TTB and tb is not None:
+            try:
                 self.tb_style = tb.Style(master=self, theme='superhero')
                 # tweak some defaults
-                try:
-                    self.tb_style.configure('TLabel', font=('Segoe UI', 10))
-                    self.tb_style.configure('TEntry', font=('Segoe UI', 10))
-                    self.tb_style.configure('TButton', font=('Segoe UI', 10))
-                    self.tb_style.configure('Big.TButton', font=('Segoe UI', 11, 'bold'), padding=(16,10))
-                except Exception:
-                    pass
-        except Exception:
+                self.tb_style.configure('TLabel', font=('Segoe UI', 10))
+                self.tb_style.configure('TEntry', font=('Segoe UI', 10))
+                self.tb_style.configure('TButton', font=('Segoe UI', 10))
+                self.tb_style.configure('Big.TButton', font=('Segoe UI', 11, 'bold'), padding=(16,10))
+            except Exception:
+                pass
+        else:
             self.tb_style = None
-            # last used preset label (e.g., '近7天', '上個月')
-            self.last_preset = None
-            # sort state per column: True = descending, False = ascending
-            self.sort_state = {}
-            # link id counter for log file links
-            self._link_count = 0
+        
+        # last used preset label (e.g., '近7天', '上個月')
+        self.last_preset = None
+        # sort state per column: True = descending, False = ascending
+        self.sort_state = {}
+        # link id counter for log file links
+        self._link_count = 0
 
         ttk.Label(frm, text="Search Console 屬性 (URL)：", style='Uniform.TLabel').grid(row=0, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.property_var = tk.StringVar(value="https://pm.shiny.com.tw/")
         ttk.Entry(frm, textvariable=self.property_var, width=60, style='Uniform.TEntry').grid(row=0, column=1, columnspan=3, sticky=tk.W, padx=(8,8), pady=(8,8))
 
-        ttk.Label(frm, text="起始日期（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=1, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
-        self.start_var = tk.StringVar(value=(date.today() - timedelta(days=30)).isoformat())
-        ttk.Entry(frm, textvariable=self.start_var, width=20, style='Uniform.TEntry').grid(row=1, column=1, sticky=tk.W, padx=(4,4), pady=(8,8))
+        ttk.Label(frm, text="日期區間（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=1, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        # Date Range Frame to ensure tight spacing
+        date_range_frame = ttk.Frame(frm)
+        date_range_frame.grid(row=1, column=1, columnspan=3, sticky=tk.W, padx=(4,8), pady=(8,8))
 
-        ttk.Label(frm, text="結束日期（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=1, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
+        self.start_var = tk.StringVar(value=(date.today() - timedelta(days=30)).isoformat())
+        if USE_TTB:
+            self.start_entry = tb.DateEntry(date_range_frame, bootstyle="primary", startdate=date.today() - timedelta(days=30), firstweekday=0, dateformat='%Y-%m-%d')
+            self.start_entry.pack(side=tk.LEFT, padx=(0, 4))
+        else:
+            ttk.Entry(date_range_frame, textvariable=self.start_var, width=20, style='Uniform.TEntry').pack(side=tk.LEFT, padx=(0, 4))
+
+        ttk.Label(date_range_frame, text="～", style='Uniform.TLabel').pack(side=tk.LEFT, padx=(0, 4))
+        
         self.end_var = tk.StringVar(value=date.today().isoformat())
-        ttk.Entry(frm, textvariable=self.end_var, width=20, style='Uniform.TEntry').grid(row=1, column=3, sticky=tk.W, padx=(4,4), pady=(8,8))
+        if USE_TTB:
+            self.end_entry = tb.DateEntry(date_range_frame, bootstyle="primary", startdate=date.today(), firstweekday=0, dateformat='%Y-%m-%d')
+            self.end_entry.pack(side=tk.LEFT, padx=(0, 0))
+        else:
+            ttk.Entry(date_range_frame, textvariable=self.end_var, width=20, style='Uniform.TEntry').pack(side=tk.LEFT, padx=(0, 0))
 
         # preset ranges
         preset_frame = ttk.Frame(frm)
@@ -296,6 +311,14 @@ class App(tk.Tk):
         start = end - timedelta(days=days-1)
         self.start_var.set(start.isoformat())
         self.end_var.set(end.isoformat())
+        if USE_TTB:
+            try:
+                self.start_entry.entry.delete(0, tk.END)
+                self.start_entry.entry.insert(0, start.isoformat())
+                self.end_entry.entry.delete(0, tk.END)
+                self.end_entry.entry.insert(0, end.isoformat())
+            except Exception:
+                pass
         # record last_preset for status label (e.g., '近7天')
         if days in (7, 30, 90, 365):
             self.last_preset = f'近{days}天'
@@ -311,6 +334,14 @@ class App(tk.Tk):
         end = last_day_last_month
         self.start_var.set(start.isoformat())
         self.end_var.set(end.isoformat())
+        if USE_TTB:
+            try:
+                self.start_entry.entry.delete(0, tk.END)
+                self.start_entry.entry.insert(0, start.isoformat())
+                self.end_entry.entry.delete(0, tk.END)
+                self.end_entry.entry.insert(0, end.isoformat())
+            except Exception:
+                pass
         self.last_preset = '上個月'
 
     def clear_table(self):
@@ -977,8 +1008,16 @@ class App(tk.Tk):
 
     def on_run(self):
         prop = self.property_var.get().strip()
-        start = self.start_var.get().strip()
-        end = self.end_var.get().strip()
+        if USE_TTB:
+            try:
+                start = self.start_entry.entry.get().strip()
+                end = self.end_entry.entry.get().strip()
+            except Exception:
+                start = self.start_var.get().strip()
+                end = self.end_var.get().strip()
+        else:
+            start = self.start_var.get().strip()
+            end = self.end_var.get().strip()
         kws = self.kws_var.get().strip() or 'allKeyWord_normalized.csv'
         base = self.outbase_var.get().strip() or 'gsc_keyword_report'
         # mock removed: always use service-account if provided
