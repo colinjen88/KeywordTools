@@ -21,6 +21,7 @@ from tkinter import ttk, filedialog, messagebox
 import csv
 import tkinter.font as tkfont
 import re
+import json
 from datetime import date, timedelta
 from datetime import datetime
 
@@ -100,6 +101,9 @@ class App(tk.Tk):
         self.last_preset = None
         # sort state per column: True = descending, False = ascending
         self.sort_state = {}
+        # favorites set (stores keywords)
+        # favorites set (stores keywords)
+        self.load_favorites()
         # link id counter for log file links
         self._link_count = 0
 
@@ -245,17 +249,33 @@ class App(tk.Tk):
         else:
             self.clear_btn = ttk.Button(btn_frame, text="清除表格", command=self.clear_table)
         self.clear_btn.grid(row=0, column=2, padx=(0,8), pady=(0,0))
-        # autoload toggle
-        self.autoload_var = tk.BooleanVar(value=True)
-        # clearer description for auto-load behavior
-        self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）', variable=self.autoload_var)
-        self.autoload_cb.grid(row=0, column=4, padx=(8,8), pady=(0,0))
+        
+        # View Favorites Button
+        if USE_TTB:
+            self.view_fav_btn = tb.Button(btn_frame, text="查看收藏清單", command=self.view_favorites, bootstyle='info-outline')
+        else:
+            self.view_fav_btn = ttk.Button(btn_frame, text="查看收藏清單", command=self.view_favorites)
+        self.view_fav_btn.grid(row=0, column=3, padx=(0,8), pady=(0,0))
+        
+        # Export Favorites Button
+        if USE_TTB:
+            self.export_fav_btn = tb.Button(btn_frame, text="匯出收藏關鍵字", command=self.export_favorites, bootstyle='success-outline')
+        else:
+            self.export_fav_btn = ttk.Button(btn_frame, text="匯出收藏關鍵字", command=self.export_favorites)
+        self.export_fav_btn.grid(row=0, column=4, padx=(0,8), pady=(0,0))
+
         # Run button bigger and styled
         if USE_TTB:
             self.run_btn_big = tb.Button(btn_frame, text="執行報表", command=self.on_run, bootstyle='success')
         else:
             self.run_btn_big = ttk.Button(btn_frame, text="執行報表", command=self.on_run, style='Big.TButton')
-        self.run_btn_big.grid(row=0, column=3, padx=(12,8), pady=(0,0))
+        self.run_btn_big.grid(row=0, column=5, padx=(12,8), pady=(0,0))
+
+        # autoload toggle
+        self.autoload_var = tk.BooleanVar(value=True)
+        # clearer description for auto-load behavior
+        self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）', variable=self.autoload_var)
+        self.autoload_cb.grid(row=0, column=6, padx=(8,8), pady=(0,0))
 
         # start file watcher to auto-load CSV created externally
         try:
@@ -420,13 +440,19 @@ class App(tk.Tk):
         idx_impr = idx(['impressions', 'impression'])
         idx_pos = idx(['position', 'avg_position', 'pos'])
 
-        # Desired columns: Keyword, Position, Clicks, Impressions, CTR
-        display_cols = ['關鍵字', '排名', '點擊', '曝光', '點擊率']
+        # Desired columns: Mark, Keyword, Position, Clicks, Impressions, CTR
+        display_cols = ['標記', '關鍵字', '排名', '點擊', '曝光', '點擊率']
         mapped_rows = []
         for r in rows:
             mapped = []
+            # mark (checkbox)
+            kw = r[idx_keyword] if idx_keyword is not None and idx_keyword < len(r) else ''
+            if kw in self.favorites:
+                mapped.append('☑')
+            else:
+                mapped.append('☐')
             # keyword
-            mapped.append(r[idx_keyword] if idx_keyword is not None and idx_keyword < len(r) else '')
+            mapped.append(kw)
             # position
             try:
                 pv = float(str(r[idx_pos]).replace(',',''))
@@ -482,12 +508,17 @@ class App(tk.Tk):
             pass
 
         for i, c in enumerate(display_cols):
-            if i == 0:
+            if i == 1: # Keyword column
                 tree.heading(c, text=c, anchor='w')
+            elif i == 0: # Mark column
+                tree.heading(c, text=c, anchor='center')
             else:
                 tree.heading(c, text=c, anchor='e')
-            # make keyword column half width and align others to right
-            if i == 0:
+            
+            # column widths
+            if i == 0: # Mark
+                tree.column(c, width=40, anchor='center', stretch=False)
+            elif i == 1: # Keyword
                 tree.column(c, width=80, anchor='w')
             else:
                 tree.column(c, width=160, anchor='e')
@@ -516,25 +547,51 @@ class App(tk.Tk):
             total_clicks = 0
             total_impr = 0
             pos_vals = []
+            
+            # variables for weighted rank
+            weighted_sum = 0.0
+            total_impr_for_weight = 0.0
+
             for r in mapped_rows:
-                # clicks (col 2), impressions (col 3), position (col 1)
+                # clicks (col 3), impressions (col 4), position (col 2) - shifted by 1 due to Mark
+                c_val = 0.0
+                im_val = 0.0
+                p_val = 0.0
+                
                 try:
-                    c = str(r[2]).replace(',', '')
-                    total_clicks += float(c) if c != '' else 0.0
+                    c = str(r[3]).replace(',', '')
+                    c_val = float(c) if c != '' else 0.0
+                    total_clicks += c_val
                 except Exception:
                     pass
                 try:
-                    im = str(r[3]).replace(',', '')
-                    total_impr += float(im) if im != '' else 0.0
+                    im = str(r[4]).replace(',', '')
+                    im_val = float(im) if im != '' else 0.0
+                    total_impr += im_val
                 except Exception:
                     pass
                 try:
-                    p = float(str(r[1]).replace(',', ''))
+                    p = float(str(r[2]).replace(',', ''))
+                    p_val = p
                     pos_vals.append(p)
                 except Exception:
                     pass
+                
+                # Weighted Rank Calculation: Sum(Position * Impressions) / Sum(Impressions)
+                # Only consider if Impressions > 0
+                if im_val > 0:
+                    weighted_sum += p_val * im_val
+                    total_impr_for_weight += im_val
+
             avg_pos = round(sum(pos_vals) / len(pos_vals), 1) if pos_vals else '-'
-            stats_text = f'關鍵字數: {kw_count}  |  總點擊: {int(total_clicks)}  |  總曝光: {int(total_impr)}  |  平均排名: {avg_pos}'
+            
+            # Calculate weighted avg
+            if total_impr_for_weight > 0:
+                weighted_avg_pos = round(weighted_sum / total_impr_for_weight, 2)
+            else:
+                weighted_avg_pos = '-'
+
+            stats_text = f'關鍵字數: {kw_count}  |  總點擊: {int(total_clicks)}  |  總曝光: {int(total_impr)}  |  平均排名: {avg_pos}  |  加權平均排名: {weighted_avg_pos}'
             self.stats_line_var.set(stats_text)
         except Exception:
             pass
@@ -591,6 +648,90 @@ class App(tk.Tk):
                 messagebox.showinfo('已儲存', f'已儲存 Excel 到 {p}')
             except Exception as e:
                 messagebox.showerror('錯誤', str(e))
+    def export_favorites(self):
+        if not self.favorites:
+            messagebox.showinfo('無收藏', '目前沒有收藏任何關鍵字')
+            return
+        
+        # Filter rows where keyword (index 1) is in favorites
+        fav_rows = [r for r in self.current_rows if len(r) > 1 and r[1] in self.favorites]
+        
+        if not fav_rows:
+             messagebox.showinfo('無收藏', '目前沒有收藏任何關鍵字')
+             return
+
+        # Generate filename
+        today_str = date.today().strftime('%Y%m%d')
+        default_name = f"收藏關鍵字_{today_str}.csv"
+        
+        p = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[('CSV','*.csv')], initialfile=default_name)
+        if not p:
+            return
+            
+        try:
+            with open(p, 'w', newline='', encoding='utf-8-sig') as fh:
+                writer = csv.writer(fh)
+                writer.writerow(self.current_columns)
+                for r in fav_rows:
+                    writer.writerow(r)
+            messagebox.showinfo('已儲存', f'已匯出 {len(fav_rows)} 筆收藏關鍵字到 {p}')
+        except Exception as e:
+            messagebox.showerror('錯誤', str(e))
+
+    def load_favorites(self):
+        self.favorites = set()
+        try:
+            if os.path.exists('favorites.json'):
+                with open('favorites.json', 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        self.favorites = set(data)
+        except Exception:
+            pass
+
+    def save_favorites(self):
+        try:
+            with open('favorites.json', 'w', encoding='utf-8') as f:
+                json.dump(list(self.favorites), f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def view_favorites(self):
+        if not self.favorites:
+            messagebox.showinfo('無收藏', '目前沒有收藏任何關鍵字')
+            return
+        
+        # Create a new dialog window
+        dialog = tk.Toplevel(self)
+        dialog.title('收藏清單')
+        dialog.geometry('400x500')
+        
+        # Title label
+        title_frame = ttk.Frame(dialog, padding=10)
+        title_frame.pack(fill=tk.X)
+        ttk.Label(title_frame, text=f'收藏的關鍵字 (共 {len(self.favorites)} 個)', font=('Segoe UI', 12, 'bold')).pack()
+        
+        # Listbox with scrollbar
+        list_frame = ttk.Frame(dialog, padding=10)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, font=('Segoe UI', 10))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+        
+        # Add favorites to listbox (sorted)
+        for kw in sorted(self.favorites):
+            listbox.insert(tk.END, kw)
+        
+        # Button frame
+        btn_frame = ttk.Frame(dialog, padding=10)
+        btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(btn_frame, text='關閉', command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text='複製全部', command=lambda: self.copy_to_clipboard('\n'.join(sorted(self.favorites)))).pack(side=tk.RIGHT, padx=5)
 
     # ----- Table interactions: sorting, auto-width, filter, right-click -----
     def setup_table_features(self):
@@ -604,7 +745,10 @@ class App(tk.Tk):
                 pass
 
         # enable right-click menu
+        # enable right-click menu
         self.tree.bind('<Button-3>', self.on_tree_right_click)
+        # enable left-click for checkbox toggle
+        self.tree.bind('<Button-1>', self.on_tree_click)
 
         # auto adjust column widths
         self.adjust_column_widths()
@@ -678,6 +822,56 @@ class App(tk.Tk):
         except Exception as e:
             self.append_log('排序失敗: ' + str(e))
 
+    def on_tree_click(self, event):
+        region = self.tree.identify("region", event.x, event.y)
+        if region == "cell" or region == "tree":
+            col = self.tree.identify_column(event.x)
+            # col is like '#1', '#2'. Mark is column #1 (index 0)
+            # Expand clickable area: allow clicking anywhere in first 60 pixels
+            if col == '#1' or (col and event.x < 60):
+                row_id = self.tree.identify_row(event.y)
+                if row_id:
+                    current_val = self.tree.set(row_id, '標記')
+                    kw = self.tree.set(row_id, '關鍵字')
+                    if current_val == '☐':
+                        new_val = '☑'
+                        self.favorites.add(kw)
+                    else:
+                        new_val = '☐'
+                        if kw in self.favorites:
+                            self.favorites.remove(kw)
+                    self.save_favorites()
+                    self.tree.set(row_id, '標記', new_val)
+                    # Auto sort: favorites on top
+                    self.sort_favorites()
+
+    def sort_favorites(self):
+        # Sort by Mark (descending: ☑ > ☐) then by Keyword (ascending)
+        try:
+            children = list(self.tree.get_children(''))
+            # key: (is_marked (bool), keyword)
+            # ☑ is greater than ☐ in unicode? U+2611 vs U+2610. 2611 > 2610. So descending works.
+            def sort_key(k):
+                mark = self.tree.set(k, '標記')
+                kw = self.tree.set(k, '關鍵字')
+                return (mark, kw)
+            
+            # We want marked first (descending mark), but keyword ascending.
+            # So we can't just use simple sort.
+            # Let's sort by keyword asc first, then stable sort by mark desc.
+            children.sort(key=lambda k: self.tree.set(k, '關鍵字'))
+            children.sort(key=lambda k: self.tree.set(k, '標記'), reverse=True)
+            
+            for index, k in enumerate(children):
+                self.tree.move(k, '', index)
+            
+            # restore row colors
+            for i, k in enumerate(self.tree.get_children('')):
+                tag = 'even' if i % 2 == 0 else 'odd'
+                self.tree.item(k, tags=(tag,))
+        except Exception:
+            pass
+
     def adjust_column_widths(self, padding=12):
         # measure content width and set column widths
         try:
@@ -690,8 +884,10 @@ class App(tk.Tk):
                     if w > maxw:
                         maxw = w
                 # Reduce keyword column width to roughly half
-                if i == 0:
+                if i == 1: # Keyword is now index 1
                     w_out = max(60, int((maxw + padding) / 2))
+                elif i == 0: # Mark column fixed width
+                    w_out = 40
                 else:
                     # add an extra right padding for numeric columns
                     w_out = maxw + padding + 16
@@ -919,6 +1115,18 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    def _animate_running_man(self, idx=0):
+        if getattr(self, '_anim_stop', True):
+            return
+        frames = ['🏃', '🏃‍♂️']
+        frame = frames[idx % len(frames)]
+        # moving dots
+        dots = '.' * ((idx // 2) % 4)
+        text = f"查詢中 {frame} {dots}"
+        # use set_status to update label safely
+        self.set_status(text, 'green')
+        self.after(200, lambda: self._animate_running_man(idx+1))
+
     def start_file_watcher(self):
         # start background thread to watch for new/updated CSV files and auto-load
         self._watch_stop = False
@@ -1053,13 +1261,16 @@ class App(tk.Tk):
         except Exception:
             pass
         # set status to querying
+        # set status to querying
         try:
-            self.set_status('查詢中', 'green')
-            try:
-                self.progress.pack(side='left', padx=(8,0))
-                self.progress.start(10)
-            except Exception:
-                pass
+            self._anim_stop = False
+            self._animate_running_man(0)
+            # self.set_status('查詢中', 'green')
+            # try:
+            #     self.progress.pack(side='left', padx=(8,0))
+            #     self.progress.start(10)
+            # except Exception:
+            #     pass
         except Exception:
             pass
         self.log.delete('1.0', tk.END)
@@ -1183,12 +1394,11 @@ class App(tk.Tk):
                 self.set_status('錯誤', 'red')
             finally:
                 try:
-                    def _stop_prog():
-                        try:
-                            self.progress.stop()
-                            self.progress.pack_forget()
-                        except: pass
-                    self.after(0, _stop_prog)
+                    self._anim_stop = True
+                    try:
+                        self.progress.stop()
+                        self.progress.pack_forget()
+                    except: pass
                 except Exception:
                     pass
                 try:
@@ -1197,10 +1407,6 @@ class App(tk.Tk):
                     pass
                 try:
                     self.run_btn.config(state=tk.NORMAL)
-                except Exception:
-                    pass
-                try:
-                    self._status_anim_running = False
                 except Exception:
                     pass
 
