@@ -1,153 +1,226 @@
-# GSC 關鍵字批次報表工具
+# KeywordTools V1.0
 
-這個小工具會讀入一份關鍵字清單（CSV），然後從 Google Search Console 擷取指定期間內每個關鍵字的 Clicks、Impressions、Position，並輸出成 CSV 報表。
+> Google Search Console 關鍵字分析工具
 
-主要特性
-- 先嘗試一次 bulk 查詢（取得前 N 筆 query），可以快速覆蓋大多數關鍵字
-- 對 bulk 未命中的關鍵字以精確查詢補上
-- 支援 Service Account 或 OAuth2 認證
+[![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/colinjen88/KeywordTools)
+[![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
-準備工作
-1. 在 Google Cloud Console 建立 Service Account 並產生 JSON 金鑰，或建立 OAuth client 憑證（Desktop）。
-2. 若使用 Service Account，請確保該 service account 被授予 Search Console 的權限（通常需要把對應的 email 加到 Search Console 的使用者列表），或使用 G Suite domain-wide delegation 並設定 `--delegated-user`。
+---
 
-安裝
-```powershell
-python -m pip install -r requirements.txt
-```
+## 📋 簡介
 
-使用範例
-```powershell
-python gsc_keyword_report.py --property "https://example.com" --keywords allKeyWord.csv --start-date 2025-10-01 --end-date 2025-10-31
+KeywordTools 是一個專業的 Google Search Console (GSC) 關鍵字分析工具，提供友好的圖形界面，幫助 SEO 專業人員和網站管理員輕鬆查詢、分析和導出關鍵字數據。
 
-# 若使用非預設 service account 檔
-python gsc_keyword_report.py --property "https://example.com" --keywords allKeyWord.csv --start-date 2025-10-01 --end-date 2025-10-31 --service-account my-sa.json --delegated-user admin@example.com
+### ✨ 核心功能
 
-# 若使用 OAuth client 檔 (會彈出授權頁面)
-python gsc_keyword_report.py --property "https://example.com" --keywords allKeyWord.csv --start-date 2025-10-01 --end-date 2025-10-31 --oauth-client client_secret.json
-```
+- 🔍 **GSC 數據查詢**: 批量查詢關鍵字的點擊、曝光、排名等數據
+- 📊 **數據分析**: 自動計算統計數據（平均排名、總點擊等）
+- 🎯 **智能篩選**: 支持多種篩選條件（關鍵字、排名、點擊等）
+- ⭐ **收藏管理**: 標記和管理重要關鍵字
+- 📤 **多格式導出**: 支持 CSV 和 Excel 格式
+- 🎨 **現代化 UI**: 使用 ttkbootstrap 提供美觀的深色主題
+- 📅 **日期選擇器**: 內建日曆選擇器，支持快速選擇日期範圍
 
-測試（mock）模式（不需 GSC 認證，會為每個關鍵字產生隨機樣本數據，方便測試整個流程）：
-```powershell
-python gsc_keyword_report.py --keywords allKeyWord_normalized.csv --start-date 2025-10-01 --end-date 2025-10-31 --property "https://example.com" --output gsc_keyword_report_sample.csv --mock
-```
+---
 
-輸入檔案格式
-- `allKeyWord.csv`：每一列為一個關鍵字，第一欄為關鍵字字串（不需 header）。
+## 🚀 快速開始
 
-輸出
-- 預設會產生 `gsc_keyword_report.csv`，欄位：`keyword, clicks, impressions, position, found_by`
+### 前置需求
 
-注意事項
-- Search Console API 有 rowLimit 與配額限制。bulk 查詢使用 `--row-limit`（預設 25000）來拿最多前 N 筆 query；若網站自然字詞超過此數，某些關鍵字可能沒被抓到，工具會再對未命中的關鍵字逐一呼叫精確查詢，但會比較慢。
-- 使用 service account 時，若出現授權錯誤，請確認該帳號在 Search Console 裡有足夠權限或使用 `--delegated-user`。
+- Python 3.9 或更高版本
+- Google Search Console API 訪問權限
+- Service Account JSON 文件
 
-如果你要我：
-- 幫你把 `allKeyWord.csv` 放到 repo，或
-- 幫你執行一次（請提供 property URL 與希望的日期範圍），
-請回覆我下一步。祝順利！
+### 安裝
 
-新增 GUI 使用方式
+```bash
+# 克隆倉庫
+git clone https://github.com/colinjen88/KeywordTools.git
+cd KeywordTools
 
-你可以用內建的簡易 GUI 來選擇 `property`、`start-date` 與 `end-date`，並選擇輸出為 CSV 或 Excel（或兩者）：
+# 安裝依賴
+pip install -r requirements.txt
 
-啟動 GUI：
-```powershell
+# 運行程式
 python run_gui.py
 ```
 
-GUI 功能說明：
-- `Property`：輸入 Search Console 的完整 property URL（例如：`https://pm.shiny.com.tw/`）。
-- `起始日期` / `結束日期`：查詢期間（格式 YYYY-MM-DD），欄位間距已縮窄，兩欄更緊湊。
-- `日期區間`快選：點選後會跳出月曆視窗，可直接在同一個月曆上點兩天選擇區間，按「套用」後會自動填入起訖日期。
-- 其他快選按鈕（近7天、近30天、近1季、近1年、上個月）：可一鍵帶入對應日期區間。
-- `Keywords file`：預設使用 `allKeyWord_normalized.csv`（若尚未產生請先執行 `normalize_keywords.py`）。
-- `Use mock data`：勾選會用模擬資料（不需 GSC 認證），方便先測試整套流程。
-- `CSV` / `Excel (.xlsx)`：選擇輸出格式；若要輸出 Excel，請先安裝 `pandas` 與 `openpyxl`。
-- 欄位篩選：可針對「關鍵字」做文字包含查詢，針對數字欄位（排名、點擊、曝光、點擊率）可選擇 > = < 並輸入數值進行條件篩選。
-- 快選按鈕與表格標題列顏色已優化：選取中按鈕為藍底白字，表頭為深藍底白字。
+### 配置
 
-補充說明：
-- 自動載入 CSV：在 GUI 右下的按鈕列中有一個勾選框 `自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）`。若勾選，GUI 會監控當前工作目錄（repo 根目錄）中最新的 `.csv` 檔案，當檔案新產生或修改時會自動載入表格顯示（適合在外部執行 CLI 並讓 GUI 自動顯示結果）。可取消勾選以避免自動載入。
-- 認證與安全（變更）：為了防止不小心使用錯誤憑證或將 Service Account 金鑰一起 Commit，GUI/CLI 現在**強制**需要使用者明確選擇一個有效的 credential：
-	- GUI：請在 `Service account JSON（選填）` 欄位中選擇一個 JSON 檔案 (或使用 OAuth client)，若未提供會拒絕執行。
-	- CLI：請在 `--service-account` 或 `--oauth-client` 參數中指定。
-	- 注意：我們不再把 `GSC_SERVICE_ACCOUNT` 或 `GOOGLE_APPLICATION_CREDENTIALS` 當作自動 fallback（以避免意外在其他環境中使用不安全憑證）；你可把環境變數用於自動化 pipeline，但 GUI 會要求明確檔案路徑。
-	- 提示：若你選擇的 JSON 檔位於 repo 目錄（或 subfolder），GUI 會跳出警告，提醒你不要把金鑰加入版本控制。
-	- Note (CSV encoding): PowerShell's redirection operator `>` often writes files as UTF-16 LE by default. The GUI now tries multiple encodings (utf-8-sig, utf-8, utf-16, cp950, cp936, latin1) to detect file encoding and will log the detected encoding when auto-loading. To avoid ambiguity, prefer creating CSVs as UTF-8, for example:
-		```powershell
-		"query,clicks,impressions,position" | Out-File -FilePath .\latest.csv -Encoding utf8
-		```
-- 輸出格式位置：`輸出格式`下拉已移到按鈕列左側，用來選擇 Save 時匯出的格式（CSV 或 Excel）。
-- 快速區間按鈕：GUI 提供 `近7天`、`近30天`、`近1季`、`近1年` 與 `上個月` 等快捷按鈕；若使用快捷按鈕查詢，狀態欄會顯示預設名稱（例如 `查詢完成_近7天` 或 `查詢完成_上個月`）。
-- 結果表格說明：結果表格包含欄位 `標記`、`關鍵字`、`排名`、`點擊`、`曝光` 與 `點擊率`（CTR），數值欄位會以右對齊並有額外右側 padding。表格支援點擊標題欄做雙向排序（點一下升冪、再點一下降冪），並在標題顯示箭頭 ▲/▼。排序後表格會重新套用交替列底色以維持清晰性。
-- 匯出檔案命名：匯出時會自動為檔名加入當日日期與查詢區間，例如 `gsc_keyword_report_20251118查詢(20251101-20251130).csv`。
+1. 準備 Google Search Console Service Account JSON 文件
+2. 準備關鍵字列表 CSV 文件（每行一個關鍵字）
+3. 在 GUI 中選擇文件並設置日期範圍
+4. 點擊「執行報表」
 
-**新功能（2025-11-21 更新）：**
-1. **日期選擇優化**：使用 `ttkbootstrap` 的日曆選擇器，點擊即可選擇日期，不需手動輸入。
-2. **收藏關鍵字功能**：
-   - 點擊表格最左側的「標記」欄（☐/☑）即可收藏關鍵字
-   - 收藏的關鍵字會自動置頂並排序
-   - 收藏清單會自動儲存至 `favorites.json`，下次開啟程式時自動載入
-   - 點擊「查看收藏清單」按鈕可查看所有收藏的關鍵字，並可複製全部
-   - 點擊「匯出收藏關鍵字」可將收藏的關鍵字匯出為 CSV 檔案
-3. **加權平均排名**：統計列新增「加權平均排名」，計算公式為 `Sum(Position * Impressions) / Sum(Impressions)`，更準確反映關鍵字的實際曝光位置。
-4. **執行動畫**：執行報表時會顯示「跑步小人」動畫（🏃...），讓等待過程更生動。
-5. **深色主題**：使用 `ttkbootstrap` 的 `superhero` 主題，提供現代化的深色介面。
+---
 
-打包為 Windows 執行檔（可選）
----------------------------------
-若需要把 GUI 打包成單一 Windows 執行檔（.exe），我們提供一個 PowerShell 腳本 `build_exe.ps1` 幫助你使用 PyInstaller 建檔：
+## 📖 使用說明
 
-步驟：
-1) 建議建立虛擬環境並安裝所有依賴：
-```powershell
+### 基本流程
+
+1. **設置屬性 URL**: 輸入 Search Console 屬性 URL
+2. **選擇日期範圍**: 使用日曆選擇器或快速選擇按鈕
+3. **選擇關鍵字文件**: 瀏覽並選擇包含關鍵字的 CSV 文件
+4. **選擇 Service Account**: 選擇 GSC API 認證文件
+5. **執行報表**: 點擊「執行報表」按鈕
+6. **查看結果**: 在表格中查看數據
+7. **篩選和排序**: 使用篩選功能精確查找數據
+8. **導出數據**: 選擇格式並導出結果
+
+### 快速選擇日期
+
+- **日期區間**: 自定義日期範圍
+- **近7天**: 最近 7 天
+- **近30天**: 最近 30 天
+- **近1季**: 最近 90 天
+- **近1年**: 最近 365 天
+- **上個月**: 上一個完整月份
+
+### 篩選功能
+
+- **關鍵字篩選**: 包含特定文字的關鍵字
+- **數值篩選**: 支持 `>`, `=`, `<` 運算子
+  - 排名 > 10
+  - 點擊 > 100
+  - 曝光 > 1000
+- **已標記篩選**: 只顯示收藏的關鍵字
+
+---
+
+## 📁 專案結構
+
+```
+KeywordTools/
+├── src/                    # 源代碼（規劃中）
+├── data/                   # 數據目錄
+│   ├── keywords/          # 關鍵字文件
+│   ├── reports/           # 生成的報表
+│   └── samples/           # 示例數據
+├── docs/                   # 文檔
+│   ├── ARCHITECTURE.md    # 架構設計
+│   ├── STYLE_GUIDE.md     # 程式風格指南
+│   └── REFACTORING_PLAN.md # 重構計畫
+├── config/                 # 配置文件
+├── scripts/                # 腳本
+├── tests/                  # 測試（規劃中）
+├── run_gui.py             # 主程式
+├── gsc_keyword_report.py  # GSC 查詢腳本
+├── requirements.txt        # 依賴列表
+├── CHANGELOG.md           # 更新日誌
+└── README.md              # 本文件
+```
+
+---
+
+## 🛠️ 技術棧
+
+- **語言**: Python 3.9+
+- **GUI**: Tkinter / ttkbootstrap
+- **API**: Google Search Console API
+- **數據處理**: Pandas
+- **打包**: PyInstaller
+
+---
+
+## 📝 開發
+
+### 開發環境設置
+
+```bash
+# 創建虛擬環境
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller
-```
-2) 執行打包：
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build_exe.ps1 -OneFile -NoConsole -ExeName GSC_Keyword_Tool -IconPath .\assets\app.ico
-```
-3) 打包結果：
- - 生成的可執行檔會放在 `dist\GSC_Keyword_Tool.exe`。
- - 請不要把 Service Account JSON 或其他憑證嵌入到執行檔（在 GUI 中改為提供憑證檔案的方式）。
 
-額外說明：
-- `build_exe.ps1` 預設會把 `allKeyWord_normalized.csv` 與 `gsc_keyword_report_sample.csv` 一併加入 exe 的資料區（`--add-data`），並支援包含一個 `assets/` 資料夾（如果存在）。
-- 若需要自訂 icon 或加入其他資料檔，請使用 `-IconPath` 或在 `build_exe.ps1` 裡加入 `--add-data` 的參數。
+# 激活虛擬環境 (Windows)
+.venv\Scripts\activate
 
-注意事項：
- - 若你要支援暗色主題或第三方套件，PyInstaller 有時候可能需要 `--hidden-import` 的參數以包含動態載入的模組（`ttkbootstrap` 等）。腳本內有示範加入 `ttkbootstrap` 的 hidden-import。若發現缺少模組，你可以在 `build_exe.ps1` 裡新增 `--hidden-import`。
- - 建議在 Windows 的 clean environment（如 VM 或 CI runner）上打包以獲得相容的可執行檔
+# 安裝開發依賴
+pip install -r requirements-dev.txt
 
-
-若要我直接在本機執行真實查詢，請回覆以下資訊：
-- `property`（Search Console property URL）
-- `start-date` 與 `end-date`
-- 是否提供 service account JSON（例如 `gsc-key-new.json`）或上傳 OAuth `client_secret.json`。
-
-----
-建議加入 pre-commit（防止意外 commit 憑證）
----------------------------------
-倘若你想在本地或 CI 中避免敏感憑證被加入版本控制，建議安裝及使用 `pre-commit` 與 `detect-secrets`：
-
-1) 安裝（建議在虛擬環境中）：
-```powershell
-python -m pip install pre-commit detect-secrets
-```
-2) 初始化 baseline 並安裝 hooks：
-```powershell
-detect-secrets scan > .secrets.baseline
-pre-commit install
-pre-commit run --all-files
-```
-3) 我們已經新增一個便利腳本 `tools/install_precommit.ps1` 幫你自動安裝與建立 baseline（可在 PowerShell 執行）：
-```powershell
-.\tools\install_precommit.ps1
+# 運行測試
+pytest
 ```
 
-註記：如果你需要我們把 `detect-secrets` 的初始 baseline 做額外審查或排除特定檔案，請告訴我。
+### 編碼規範
 
+請參閱 [程式風格指南](docs/STYLE_GUIDE.md)
+
+### 架構設計
+
+請參閱 [架構文檔](docs/ARCHITECTURE.md)
+
+---
+
+## 🗺️ 路線圖
+
+### V1.0 (當前版本)
+- ✅ 基本 GSC 數據查詢
+- ✅ GUI 界面
+- ✅ 數據篩選和排序
+- ✅ 收藏功能
+- ✅ CSV/Excel 導出
+
+### V1.1 (規劃中)
+- [ ] 模組化重構
+- [ ] 單元測試
+- [ ] 配置文件支持
+- [ ] 性能優化
+
+### V2.0 (未來)
+- [ ] 數據可視化
+- [ ] 多數據源支持
+- [ ] 自動化報表
+- [ ] Web 版本
+
+---
+
+## 🤝 貢獻
+
+歡迎貢獻！請遵循以下步驟：
+
+1. Fork 本倉庫
+2. 創建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交變更 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 開啟 Pull Request
+
+請確保：
+- 遵循 [程式風格指南](docs/STYLE_GUIDE.md)
+- 添加適當的測試
+- 更新相關文檔
+
+---
+
+## 📄 授權
+
+本專案採用 MIT 授權 - 詳見 [LICENSE](LICENSE) 文件
+
+---
+
+## 👤 作者
+
+**Colinjen**
+
+- Email: colinjen88@gmail.com
+- GitHub: [@colinjen88](https://github.com/colinjen88)
+
+---
+
+## 🙏 致謝
+
+- Google Search Console API
+- ttkbootstrap 團隊
+- 所有貢獻者
+
+---
+
+## 📞 支持
+
+如有問題或建議，請：
+
+- 開啟 [Issue](https://github.com/colinjen88/KeywordTools/issues)
+- 發送郵件至 colinjen88@gmail.com
+
+---
+
+**KeywordTools V1.0** - Product by [Colinjen](mailto:colinjen88@gmail.com)
