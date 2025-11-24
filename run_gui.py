@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+KeywordTools V1.0
 簡易 GUI 執行器：讓使用者透過視覺介面輸入 Search Console property、起訖日與輸出格式，並執行 gsc_keyword_report.py
 
 功能：
@@ -11,6 +12,9 @@
   python run_gui.py
 
 注意：若選 XLSX 輸出，需要安裝 `pandas` 與 `openpyxl`（已列在 `requirements.txt`）。
+
+Author: Colinjen (colinjen88@gmail.com)
+Version: 1.0
 """
 import subprocess
 import sys
@@ -277,6 +281,19 @@ class App(tk.Tk):
         self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）', variable=self.autoload_var)
         self.autoload_cb.grid(row=0, column=6, padx=(8,8), pady=(0,0))
 
+        # Version info at the bottom
+        version_frame = ttk.Frame(frm)
+        version_frame.grid(row=13, column=0, columnspan=4, sticky=tk.E, padx=(8,8), pady=(4,8))
+        
+        version_label = tk.Label(version_frame, text='KeywordTools V1.0 Product by ', 
+                                fg='#808080', font=('Segoe UI', 8))
+        version_label.pack(side=tk.LEFT)
+        
+        author_label = tk.Label(version_frame, text='Colinjen', 
+                               fg='#808080', font=('Segoe UI', 8), cursor='hand2')
+        author_label.pack(side=tk.LEFT)
+        author_label.bind('<Button-1>', lambda e: self.open_email())
+
         # start file watcher to auto-load CSV created externally
         try:
             self.start_file_watcher()
@@ -325,6 +342,10 @@ class App(tk.Tk):
         p = filedialog.askopenfilename(initialdir='.', filetypes=[('JSON files','*.json'),('All files','*.*')])
         if p:
             self.sa_var.set(p)
+
+    def open_email(self):
+        import webbrowser
+        webbrowser.open('mailto:colinjen88@gmail.com')
 
     def set_preset(self, days:int):
         end = date.today()
