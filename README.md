@@ -1,8 +1,8 @@
-# KeywordTools V1.0
+# KeywordTools V1.1
 
 > Google Search Console 關鍵字分析工具
 
-[![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/colinjen88/KeywordTools)
+[![Version](https://img.shields.io/badge/version-1.1-blue.svg)](https://github.com/colinjen88/KeywordTools)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 

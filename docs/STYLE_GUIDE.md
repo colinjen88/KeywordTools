@@ -1,8 +1,8 @@
 # KeywordTools 程式風格指導原則
 
 ## 版本
-Version: 1.0  
-Last Updated: 2025-11-24
+Version: 1.1  
+Last Updated: 2025-11-25
 
 ## 目標
 本文檔定義 KeywordTools 專案的編碼標準和最佳實踐，確保代碼的一致性、可維護性和可擴展性。

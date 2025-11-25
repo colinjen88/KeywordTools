@@ -1,8 +1,8 @@
 # KeywordTools 架構文檔
 
 ## 版本
-Version: 1.0  
-Last Updated: 2025-11-24
+Version: 1.1  
+Last Updated: 2025-11-25
 
 ---
 

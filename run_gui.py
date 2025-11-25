@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KeywordTools V1.0
+KeywordTools V1.1
 簡易 GUI 執行器：讓使用者透過視覺介面輸入 Search Console property、起訖日與輸出格式，並執行 gsc_keyword_report.py
 
 功能：
@@ -14,7 +14,7 @@ KeywordTools V1.0
 注意：若選 XLSX 輸出，需要安裝 `pandas` 與 `openpyxl`（已列在 `requirements.txt`）。
 
 Author: Colinjen (colinjen88@gmail.com)
-Version: 1.0
+Version: 1.1
 """
 import subprocess
 import sys
@@ -59,20 +59,7 @@ class App(tk.Tk):
         ELEMENT_GAP = 16  # pixels between elements
         LINE_HEIGHT = 16   # fixed row height (改為 16px)
 
-        # create a consistent ttk style for inputs and buttons
-        try:
-            style = ttk.Style()
-            style.configure('Uniform.TEntry', font=('Segoe UI', 10), padding=(6, 4))
-            style.configure('Uniform.TButton', font=('Segoe UI', 10), padding=(8, 4))
-            style.configure('Uniform.TLabel', font=('Segoe UI', 10))
-            style.configure('Uniform.TCombobox', font=('Segoe UI', 10), padding=(6, 4))
-            # Custom styles for preset buttons
-            style.configure('Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#efefef', foreground='#1565c0')
-            style.map('Preset.TButton', background=[('active', '#e0e0e0')], foreground=[('active', '#1565c0')])
-            style.configure('Selected.Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#1565c0', foreground='white')
-            style.map('Selected.Preset.TButton', background=[('active', '#0d47a1')], foreground=[('active', 'white')])
-        except Exception:
-            style = None
+
 
         # enforce fixed row height for rows we will use (0..13)
         for r in range(0, 14):
@@ -100,6 +87,21 @@ class App(tk.Tk):
                 pass
         else:
             self.tb_style = None
+        
+        # create a consistent ttk style for inputs and buttons (AFTER theme init)
+        try:
+            style = ttk.Style()
+            style.configure('Uniform.TEntry', font=('Segoe UI', 10), padding=(6, 4))
+            style.configure('Uniform.TButton', font=('Segoe UI', 10), padding=(8, 4))
+            style.configure('Uniform.TLabel', font=('Segoe UI', 10))
+            style.configure('Uniform.TCombobox', font=('Segoe UI', 10), padding=(6, 4))
+            # Custom styles for preset buttons
+            style.configure('Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#efefef', foreground='#1565c0')
+            style.map('Preset.TButton', background=[('active', '#e0e0e0')], foreground=[('active', '#1565c0')])
+            style.configure('Selected.Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#1565c0', foreground='white')
+            style.map('Selected.Preset.TButton', background=[('active', '#0d47a1')], foreground=[('active', 'white')])
+        except Exception:
+            style = None
         
         # last used preset label (e.g., '近7天', '上個月')
         self.last_preset = None
@@ -285,7 +287,7 @@ class App(tk.Tk):
         version_frame = ttk.Frame(frm)
         version_frame.grid(row=13, column=0, columnspan=4, sticky=tk.E, padx=(8,8), pady=(4,8))
         
-        version_label = tk.Label(version_frame, text='KeywordTools V1.0 Product by ', 
+        version_label = tk.Label(version_frame, text='KeywordTools V1.1 Product by ', 
                                 fg='#808080', font=('Segoe UI', 8))
         version_label.pack(side=tk.LEFT)
         
@@ -546,16 +548,37 @@ class App(tk.Tk):
 
         # insert rows with alternating background (visual separator)
         try:
+            # Configure tags for background colors
+            tree.tag_configure('even', background='#fefefe')
+            tree.tag_configure('odd', background='#ededed')
+            
+            # Configure tags for text colors (favorites based on rank)
+            tree.tag_configure('fav_top3', foreground='#cf79a6', font=('Segoe UI', 10, 'bold'))
+            tree.tag_configure('fav_21_30', foreground='#e06914', font=('Segoe UI', 10, 'bold'))
+            tree.tag_configure('fav_gt31', foreground='#eb4e4e', font=('Segoe UI', 10, 'bold'))
+
             for idx, r in enumerate(mapped_rows):
-                tag = 'even' if idx % 2 == 0 else 'odd'
-                # ensure numeric columns are right aligned; set tag for entire row
-                tree.insert('', tk.END, values=r, tags=(tag,))
-            # configure tag backgrounds
-            try:
-                tree.tag_configure('even', background='#ffffff')
-                tree.tag_configure('odd', background='#f6f6f6')
-            except Exception:
-                pass
+                row_tags = []
+                
+                # Background tag
+                bg_tag = 'even' if idx % 2 == 0 else 'odd'
+                row_tags.append(bg_tag)
+                
+                # Foreground color logic for favorites
+                # r[0] is Mark ('☑' or '☐'), r[2] is Position
+                if r[0] == '☑':
+                    try:
+                        rank_val = float(r[2])
+                        if rank_val <= 3:
+                            row_tags.append('fav_top3')
+                        elif 21 <= rank_val <= 30:
+                            row_tags.append('fav_21_30')
+                        elif rank_val >= 31:
+                            row_tags.append('fav_gt31')
+                    except (ValueError, TypeError):
+                        pass
+                
+                tree.insert('', tk.END, values=r, tags=tuple(row_tags))
         except Exception:
             for r in mapped_rows:
                 tree.insert('', tk.END, values=r)
@@ -827,8 +850,20 @@ class App(tk.Tk):
                 self.tree.move(k, '', index)
             # after reorder, restore alternating row colors by reassigning tags
             for i, k in enumerate(self.tree.get_children('')):
-                tag = 'even' if i % 2 == 0 else 'odd'
-                self.tree.item(k, tags=(tag,))
+                tags = ['even' if i % 2 == 0 else 'odd']
+                # Restore favorite styling
+                if self.tree.set(k, '標記') == '☑':
+                    try:
+                        rank_val = float(self.tree.set(k, '排名'))
+                        if rank_val <= 3:
+                            tags.append('fav_top3')
+                        elif 21 <= rank_val <= 30:
+                            tags.append('fav_21_30')
+                        elif rank_val >= 31:
+                            tags.append('fav_gt31')
+                    except (ValueError, TypeError):
+                        pass
+                self.tree.item(k, tags=tuple(tags))
             # update heading indicator
             try:
                 # remove arrows from all headings
@@ -863,8 +898,29 @@ class App(tk.Tk):
                             self.favorites.remove(kw)
                     self.save_favorites()
                     self.tree.set(row_id, '標記', new_val)
-                    # Auto sort: favorites on top
-                    self.sort_favorites()
+                    
+                    # Update tags immediately
+                    current_tags = list(self.tree.item(row_id, 'tags'))
+                    # Remove old color tags
+                    for t in ['fav_top3', 'fav_21_30', 'fav_gt31']:
+                        if t in current_tags:
+                            current_tags.remove(t)
+                    
+                    if new_val == '☑':
+                        try:
+                            rank_val = float(self.tree.set(row_id, '排名'))
+                            if rank_val <= 3:
+                                current_tags.append('fav_top3')
+                            elif 21 <= rank_val <= 30:
+                                current_tags.append('fav_21_30')
+                            elif rank_val >= 31:
+                                current_tags.append('fav_gt31')
+                        except (ValueError, TypeError):
+                            pass
+                    self.tree.item(row_id, tags=tuple(current_tags))
+                    
+                    # Auto sort removed as per user request
+                    # self.sort_favorites()
 
     def sort_favorites(self):
         # Sort by Mark (descending: ☑ > ☐) then by Keyword (ascending)
