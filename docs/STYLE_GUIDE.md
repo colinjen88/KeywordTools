@@ -1,7 +1,7 @@
 # KeywordTools 程式風格指導原則
 
 ## 版本
-Version: 1.1  
+Version: 1.2  
 Last Updated: 2025-11-25
 
 ## 目標

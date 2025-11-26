@@ -27,6 +27,8 @@ import sys
 import time
 import random
 from collections import defaultdict
+from datetime import date, timedelta
+from datetime import date, timedelta
 
 has_google = True
 try:
@@ -146,8 +148,71 @@ def load_keywords(path):
     return kws
 
 
+def fetch_all_data(service, property_url, start_date, end_date, keywords, row_limit, mock=False):
+    results = {}
+    if mock:
+        # Use simple hash of date string to vary random seed slightly but deterministically
+        seed_val = 42 + sum(ord(c) for c in start_date)
+        random.seed(seed_val)
+        for kw in keywords:
+            clicks = random.randint(0, 200)
+            impressions = clicks * random.randint(1, 50)
+            position = round(random.uniform(1, 50), 2) if impressions > 0 else 0.0
+            results[kw] = {
+                "clicks": clicks,
+                "impressions": impressions,
+                "position": position,
+                "found_by": "mock"
+            }
+        return results
+
+    print(f"查詢區間 {start_date} ~ {end_date} ...")
+    bulk = fetch_bulk_queries(service, property_url, start_date, end_date, row_limit)
+    
+    missing = []
+    for kw in keywords:
+        key = kw.lower()
+        if key in bulk:
+            d = bulk[key]
+            results[kw] = {
+                "clicks": d["clicks"],
+                "impressions": d["impressions"],
+                "position": d["position"],
+                "found_by": "bulk"
+            }
+        else:
+            missing.append(kw)
+            
+    if missing:
+        print(f"  {len(missing)} 個關鍵字未在 bulk 結果中，進行精確查詢...")
+        for i, kw in enumerate(missing, 1):
+            if i % 50 == 0: time.sleep(1)
+            d = fetch_exact_query(service, property_url, start_date, end_date, kw)
+            if d:
+                results[kw] = {
+                    "clicks": d["clicks"],
+                    "impressions": d["impressions"],
+                    "position": d["position"],
+                    "found_by": "exact"
+                }
+            else:
+                results[kw] = {
+                    "clicks": 0, "impressions": 0, "position": 0.0, "found_by": "none"
+                }
+    return results
+
+def get_prev_month_range():
+    today = date.today()
+    first = today.replace(day=1)
+    last_month = first - timedelta(days=1)
+    start_date = last_month.replace(day=1)
+    end_date = last_month
+    return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+
+
+
 def write_output(output_path, rows):
-    fieldnames = ["keyword", "clicks", "impressions", "position", "found_by"]
+    fieldnames = ["keyword", "clicks", "impressions", "position", "prev_month_position", "found_by"]
     # 若輸出為 .xlsx，使用 pandas 寫入 Excel，否則寫 CSV
     if output_path.lower().endswith(('.xlsx', '.xls')):
         try:
@@ -190,57 +255,32 @@ def main():
     print("載入關鍵字清單...")
     keywords = load_keywords(args.keywords)
     print(f"載入 {len(keywords)} 個關鍵字")
+    print("載入關鍵字清單...")
+    keywords = load_keywords(args.keywords)
+    print(f"載入 {len(keywords)} 個關鍵字")
+
+    # 1. Fetch current range data
+    current_data = fetch_all_data(service, args.property, args.start_date, args.end_date, keywords, args.row_limit, args.mock)
+    
+    # 2. Fetch previous month data
+    prev_start, prev_end = get_prev_month_range()
+    print(f"準備查詢前月數據 ({prev_start} ~ {prev_end})...")
+    prev_data = fetch_all_data(service, args.property, prev_start, prev_end, keywords, args.row_limit, args.mock)
+
+    # 3. Merge results
     out_rows = []
-    if args.mock:
-        print("使用 mock 模式產生範例數據（不呼叫 GSC API）...")
-        random.seed(42)
-        for kw in keywords:
-            clicks = random.randint(0, 200)
-            impressions = clicks * random.randint(1, 50)
-            position = round(random.uniform(1, 50), 2) if impressions > 0 else ""
-            out_rows.append({
-                "keyword": kw,
-                "clicks": clicks,
-                "impressions": impressions,
-                "position": position,
-                "found_by": "mock",
-            })
-    else:
-        print("嘗試以 bulk 查詢擷取最多前 rows 的 query 資料（可快速覆蓋大部分關鍵字）...")
-        bulk = fetch_bulk_queries(service, args.property, args.start_date, args.end_date, args.row_limit)
-        print(f"bulk 查詢取得 {len(bulk)} 筆 query 資料")
-
-        missing = []
-        for kw in keywords:
-            key = kw.lower()
-            if key in bulk:
-                d = bulk[key]
-                out_rows.append({
-                    "keyword": kw,
-                    "clicks": d["clicks"],
-                    "impressions": d["impressions"],
-                    "position": d["position"],
-                    "found_by": "bulk",
-                })
-            else:
-                missing.append(kw)
-
-        print(f"{len(missing)} 個關鍵字未在 bulk 結果中發現，將逐一以精確查詢補上（速度較慢）")
-        for i, kw in enumerate(missing, 1):
-            # 緩慢速率限制保護
-            if i % 50 == 0:
-                time.sleep(1)
-            d = fetch_exact_query(service, args.property, args.start_date, args.end_date, kw)
-            if d:
-                out_rows.append({
-                    "keyword": kw,
-                    "clicks": d["clicks"],
-                    "impressions": d["impressions"],
-                    "position": d["position"],
-                    "found_by": "exact",
-                })
-            else:
-                out_rows.append({"keyword": kw, "clicks": 0, "impressions": 0, "position": "", "found_by": "none"})
+    for kw in keywords:
+        curr = current_data.get(kw, {})
+        prev = prev_data.get(kw, {})
+        
+        out_rows.append({
+            "keyword": kw,
+            "clicks": curr.get("clicks", 0),
+            "impressions": curr.get("impressions", 0),
+            "position": curr.get("position", 0.0),
+            "prev_month_position": prev.get("position", 0.0),
+            "found_by": curr.get("found_by", "none")
+        })
 
     print(f"寫出結果到 {args.output} ...")
     write_output(args.output, out_rows)

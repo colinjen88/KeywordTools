@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KeywordTools V1.1
+KeywordTools V1.2
 簡易 GUI 執行器：讓使用者透過視覺介面輸入 Search Console property、起訖日與輸出格式，並執行 gsc_keyword_report.py
 
 功能：
@@ -14,7 +14,7 @@ KeywordTools V1.1
 注意：若選 XLSX 輸出，需要安裝 `pandas` 與 `openpyxl`（已列在 `requirements.txt`）。
 
 Author: Colinjen (colinjen88@gmail.com)
-Version: 1.1
+Version: 1.2
 """
 import subprocess
 import sys
@@ -287,7 +287,7 @@ class App(tk.Tk):
         version_frame = ttk.Frame(frm)
         version_frame.grid(row=13, column=0, columnspan=4, sticky=tk.E, padx=(8,8), pady=(4,8))
         
-        version_label = tk.Label(version_frame, text='KeywordTools V1.1 Product by ', 
+        version_label = tk.Label(version_frame, text='KeywordTools V1.2 Product by ', 
                                 fg='#808080', font=('Segoe UI', 8))
         version_label.pack(side=tk.LEFT)
         
@@ -462,9 +462,10 @@ class App(tk.Tk):
         idx_clicks = idx(['clicks', 'click'])
         idx_impr = idx(['impressions', 'impression'])
         idx_pos = idx(['position', 'avg_position', 'pos'])
+        idx_prev_pos = idx(['prev_month_position', 'prev_pos'])
 
-        # Desired columns: Mark, Keyword, Position, Clicks, Impressions, CTR
-        display_cols = ['標記', '關鍵字', '排名', '點擊', '曝光', '點擊率']
+        # Desired columns: Mark, Keyword, Trend, Position, Prev Position, Clicks, Impressions, CTR
+        display_cols = ['標記', '關鍵字', '趨勢', '排名', '前月排名', '點擊', '曝光', '點擊率']
         mapped_rows = []
         for r in rows:
             mapped = []
@@ -476,12 +477,38 @@ class App(tk.Tk):
                 mapped.append('☐')
             # keyword
             mapped.append(kw)
-            # position
+            
+            # Prepare numeric values for trend calculation
             try:
                 pv = float(str(r[idx_pos]).replace(',',''))
-                mapped.append(str(round(pv, 1)))
+            except: pv = 0.0
+            
+            try:
+                ppv = float(str(r[idx_prev_pos]).replace(',',''))
+            except: ppv = 0.0
+            
+            # Trend
+            trend_text = ''
+            if pv > 0 and ppv > 0:
+                diff = ppv - pv # Prev - Curr. Positive means improved (rank got smaller)
+                if diff >= 0.5: # Improved
+                    trend_text = f'▲ {round(diff, 1)}'
+                elif diff <= -0.5: # Worsened
+                    trend_text = f'▼ {round(diff, 1)}'
+            mapped.append(trend_text)
+
+            # position
+            try:
+                mapped.append(str(round(pv, 1)) if pv > 0 else '')
             except Exception:
                 mapped.append(r[idx_pos] if idx_pos is not None and idx_pos < len(r) else '')
+            
+            # prev position
+            if ppv == 0:
+                mapped.append('-')
+            else:
+                mapped.append(str(round(ppv, 1)))
+
             # clicks
             mapped.append(r[idx_clicks] if idx_clicks is not None and idx_clicks < len(r) else '')
             # impressions
@@ -556,6 +583,9 @@ class App(tk.Tk):
             tree.tag_configure('fav_top3', foreground='#cf79a6', font=('Segoe UI', 10, 'bold'))
             tree.tag_configure('fav_21_30', foreground='#e06914', font=('Segoe UI', 10, 'bold'))
             tree.tag_configure('fav_gt31', foreground='#eb4e4e', font=('Segoe UI', 10, 'bold'))
+            
+            # Configure tags for trend colors
+            tree.tag_configure('trend_blue', foreground='#0068d8')
 
             for idx, r in enumerate(mapped_rows):
                 row_tags = []
@@ -565,10 +595,10 @@ class App(tk.Tk):
                 row_tags.append(bg_tag)
                 
                 # Foreground color logic for favorites
-                # r[0] is Mark ('☑' or '☐'), r[2] is Position
+                # r[0] is Mark, r[3] is Position (index shifted by Trend)
                 if r[0] == '☑':
                     try:
-                        rank_val = float(r[2])
+                        rank_val = float(r[3])
                         if rank_val <= 3:
                             row_tags.append('fav_top3')
                         elif 21 <= rank_val <= 30:
@@ -577,6 +607,10 @@ class App(tk.Tk):
                             row_tags.append('fav_gt31')
                     except (ValueError, TypeError):
                         pass
+
+                # Trend tag (added AFTER favorites so it overrides color)
+                if '▲' in str(r[2]) or '▼' in str(r[2]):
+                    row_tags.append('trend_blue')
                 
                 tree.insert('', tk.END, values=r, tags=tuple(row_tags))
         except Exception:
@@ -597,25 +631,25 @@ class App(tk.Tk):
             total_impr_for_weight = 0.0
 
             for r in mapped_rows:
-                # clicks (col 3), impressions (col 4), position (col 2) - shifted by 1 due to Mark
+                # clicks (col 5), impressions (col 6), position (col 3) - shifted due to Mark, Trend
                 c_val = 0.0
                 im_val = 0.0
                 p_val = 0.0
                 
                 try:
-                    c = str(r[3]).replace(',', '')
+                    c = str(r[5]).replace(',', '')
                     c_val = float(c) if c != '' else 0.0
                     total_clicks += c_val
                 except Exception:
                     pass
                 try:
-                    im = str(r[4]).replace(',', '')
+                    im = str(r[6]).replace(',', '')
                     im_val = float(im) if im != '' else 0.0
                     total_impr += im_val
                 except Exception:
                     pass
                 try:
-                    p = float(str(r[2]).replace(',', ''))
+                    p = float(str(r[3]).replace(',', ''))
                     p_val = p
                     pos_vals.append(p)
                 except Exception:
@@ -783,7 +817,7 @@ class App(tk.Tk):
         for col in self.current_columns:
             try:
                 # numeric is True for position/clicks/impr/ctr except keyword
-                numeric = col in ('排名', '點擊', '曝光', '點擊率')
+                numeric = col in ('排名', '前月排名', '點擊', '曝光', '點擊率')
                 self.tree.heading(col, text=col, command=lambda c=col, n=numeric: self.sort_by_column(c, n))
             except Exception:
                 pass
@@ -815,7 +849,8 @@ class App(tk.Tk):
             self.op_combo.grid(row=0, column=2, padx=2)
             
             self.filter_val_var = tk.StringVar()
-            ttk.Entry(self.filter_frame, textvariable=self.filter_val_var, width=24).grid(row=0, column=3, padx=4)
+            self.val_entry = ttk.Entry(self.filter_frame, textvariable=self.filter_val_var, width=24)
+            self.val_entry.grid(row=0, column=3, padx=4)
             ttk.Button(self.filter_frame, text='套用', command=self.apply_filter).grid(row=0, column=4, padx=4)
             ttk.Button(self.filter_frame, text='清除', command=self.clear_filter).grid(row=0, column=5, padx=4)
             
@@ -851,6 +886,7 @@ class App(tk.Tk):
             # after reorder, restore alternating row colors by reassigning tags
             for i, k in enumerate(self.tree.get_children('')):
                 tags = ['even' if i % 2 == 0 else 'odd']
+                
                 # Restore favorite styling
                 if self.tree.set(k, '標記') == '☑':
                     try:
@@ -863,6 +899,13 @@ class App(tk.Tk):
                             tags.append('fav_gt31')
                     except (ValueError, TypeError):
                         pass
+
+                # Restore trend styling (AFTER favorites)
+                try:
+                    trend_val = str(self.tree.set(k, '趨勢'))
+                    if '▲' in trend_val or '▼' in trend_val:
+                        tags.append('trend_blue')
+                except: pass
                 self.tree.item(k, tags=tuple(tags))
             # update heading indicator
             try:
@@ -902,10 +945,11 @@ class App(tk.Tk):
                     # Update tags immediately
                     current_tags = list(self.tree.item(row_id, 'tags'))
                     # Remove old color tags
-                    for t in ['fav_top3', 'fav_21_30', 'fav_gt31']:
-                        if t in current_tags:
-                            current_tags.remove(t)
-                    
+                    # Remove trend_blue if present to re-append at end
+                    has_trend = 'trend_blue' in current_tags
+                    if has_trend:
+                        current_tags.remove('trend_blue')
+
                     if new_val == '☑':
                         try:
                             rank_val = float(self.tree.set(row_id, '排名'))
@@ -917,6 +961,11 @@ class App(tk.Tk):
                                 current_tags.append('fav_gt31')
                         except (ValueError, TypeError):
                             pass
+                    
+                    # Re-append trend_blue so it stays on top
+                    if has_trend:
+                        current_tags.append('trend_blue')
+
                     self.tree.item(row_id, tags=tuple(current_tags))
                     
                     # Auto sort removed as per user request
@@ -960,23 +1009,47 @@ class App(tk.Tk):
                     w = f.measure(text)
                     if w > maxw:
                         maxw = w
-                # Reduce keyword column width to roughly half
+                # Reduce keyword column width
                 if i == 1: # Keyword is now index 1
-                    w_out = max(60, int((maxw + padding) / 2))
+                    w_out = max(60, int((maxw + padding) / 4)) # Shrink factor increased
+                    self.tree.column(col, width=w_out, stretch=True)
                 elif i == 0: # Mark column fixed width
                     w_out = 40
+                    self.tree.column(col, width=w_out, stretch=False)
+                elif i == 2: # Trend column
+                    w_out = 70 # Increased for text
+                    self.tree.column(col, width=w_out, anchor='e', stretch=False)
                 else:
                     # add an extra right padding for numeric columns
                     w_out = maxw + padding + 16
-                self.tree.column(col, width=w_out)
+                    self.tree.column(col, width=w_out, stretch=False)
         except Exception:
             pass
 
     def on_filter_col_change(self, event=None):
         col = self.filter_col_var.get()
+        
+        if col == '標記':
+            try:
+                # Hide operator and entry for cleaner UI
+                self.op_combo.grid_remove()
+                self.val_entry.grid_remove()
+                
+                self.filter_val_var.set('☑') # Auto-fill for clarity
+                # Auto-apply filter immediately
+                self.apply_filter()
+            except: pass
+            return
+
+        # Restore visibility for other columns
+        try:
+            self.op_combo.grid()
+            self.val_entry.grid()
+        except: pass
+
         # Show operator only for numeric columns (not Keyword)
-        # Numeric columns: 排名, 點擊, 曝光, 點擊率
-        if col in ('排名', '點擊', '曝光', '點擊率'):
+        # Numeric columns: 排名, 前月排名, 點擊, 曝光, 點擊率
+        if col in ('排名', '前月排名', '點擊', '曝光', '點擊率'):
             try:
                 self.op_combo.config(state='readonly')
             except: pass
@@ -989,18 +1062,29 @@ class App(tk.Tk):
         col = self.filter_col_var.get()
         op = self.filter_op_var.get()
         val_str = self.filter_val_var.get().strip().lower()
-        if not col or val_str == '':
+        if not col:
             return
+            
+        # Special handling for Mark column (auto-filter)
+        if col == '標記':
+             # Allow empty val_str because we auto-set it, but if user cleared it, assume they want ☑
+             val_str = '☑'
+        elif val_str == '':
+            return
+
         try:
             filtered = []
             idx = self.current_columns.index(col)
-            is_numeric = col in ('排名', '點擊', '曝光', '點擊率')
+            is_numeric = col in ('排名', '前月排名', '點擊', '曝光', '點擊率')
             
             for r in self.current_rows:
                 if idx >= len(r): continue
                 cell_val = str(r[idx])
                 
-                if col == '關鍵字' or not is_numeric:
+                if col == '標記':
+                    if cell_val == '☑':
+                        filtered.append(r)
+                elif col == '關鍵字' or not is_numeric:
                     if val_str in cell_val.lower():
                         filtered.append(r)
                 else:
@@ -1021,8 +1105,22 @@ class App(tk.Tk):
             for it in self.tree.get_children():
                 self.tree.delete(it)
             for idx, r in enumerate(filtered):
-                tag = 'even' if idx % 2 == 0 else 'odd'
-                self.tree.insert('', tk.END, values=r, tags=(tag,))
+                tags = ['even' if idx % 2 == 0 else 'odd']
+                if r[0] == '☑':
+                    try:
+                        rank_val = float(r[3]) # Rank is now index 3
+                        if rank_val <= 3:
+                            tags.append('fav_top3')
+                        elif 21 <= rank_val <= 30:
+                            tags.append('fav_21_30')
+                        elif rank_val >= 31:
+                            tags.append('fav_gt31')
+                    except: pass
+
+                # Trend tag (AFTER favorites)
+                if len(r) > 2 and ('▲' in str(r[2]) or '▼' in str(r[2])):
+                    tags.append('trend_blue')
+                self.tree.insert('', tk.END, values=r, tags=tuple(tags))
             self.append_log(f'已套用篩選：{col} {op if is_numeric else "包含"} "{val_str}"（{len(filtered)} 筆）')
         except Exception as e:
             self.append_log('篩選失敗: ' + str(e))
@@ -1032,8 +1130,22 @@ class App(tk.Tk):
             for it in self.tree.get_children():
                 self.tree.delete(it)
             for idx, r in enumerate(self.current_rows):
-                tag = 'even' if idx % 2 == 0 else 'odd'
-                self.tree.insert('', tk.END, values=r, tags=(tag,))
+                tags = ['even' if idx % 2 == 0 else 'odd']
+                if r[0] == '☑':
+                    try:
+                        rank_val = float(r[3]) # Rank is now index 3
+                        if rank_val <= 3:
+                            tags.append('fav_top3')
+                        elif 21 <= rank_val <= 30:
+                            tags.append('fav_21_30')
+                        elif rank_val >= 31:
+                            tags.append('fav_gt31')
+                    except: pass
+
+                # Trend tag (AFTER favorites)
+                if len(r) > 2 and ('▲' in str(r[2]) or '▼' in str(r[2])):
+                    tags.append('trend_blue')
+                self.tree.insert('', tk.END, values=r, tags=tuple(tags))
             self.filter_val_var.set('')
             self.append_log('已清除篩選')
         except Exception as e:
