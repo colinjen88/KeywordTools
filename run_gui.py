@@ -464,8 +464,8 @@ class App(tk.Tk):
         idx_pos = idx(['position', 'avg_position', 'pos'])
         idx_prev_pos = idx(['prev_month_position', 'prev_pos'])
 
-        # Desired columns: Mark, Keyword, Trend, Position, Prev Position, Clicks, Impressions, CTR
-        display_cols = ['標記', '關鍵字', '趨勢', '排名', '前月排名', '點擊', '曝光', '點擊率']
+        # Desired columns: Mark, Keyword, Trend, Change, Position, Prev Position, Clicks, Impressions, CTR
+        display_cols = ['標記', '關鍵字', '趨勢', '變化', '排名', '前月排名', '點擊', '曝光', '點擊率']
         mapped_rows = []
         for r in rows:
             mapped = []
@@ -487,15 +487,19 @@ class App(tk.Tk):
                 ppv = float(str(r[idx_prev_pos]).replace(',',''))
             except: ppv = 0.0
             
-            # Trend
+            # Trend arrow
             trend_text = ''
+            change_text = ''
             if pv > 0 and ppv > 0:
                 diff = ppv - pv # Prev - Curr. Positive means improved (rank got smaller)
                 if diff >= 0.5: # Improved
-                    trend_text = f'▲ {round(diff, 1)}'
+                    trend_text = '▲'
+                    change_text = f'+{round(diff, 1)}'
                 elif diff <= -0.5: # Worsened
-                    trend_text = f'▼ {round(diff, 1)}'
+                    trend_text = 'X'
+                    change_text = f'{round(diff, 1)}'
             mapped.append(trend_text)
+            mapped.append(change_text)
 
             # position
             try:
@@ -583,9 +587,6 @@ class App(tk.Tk):
             tree.tag_configure('fav_top3', foreground='#cf79a6', font=('Segoe UI', 10, 'bold'))
             tree.tag_configure('fav_21_30', foreground='#e06914', font=('Segoe UI', 10, 'bold'))
             tree.tag_configure('fav_gt31', foreground='#eb4e4e', font=('Segoe UI', 10, 'bold'))
-            
-            # Configure tags for trend colors
-            tree.tag_configure('trend_blue', foreground='#0068d8')
 
             for idx, r in enumerate(mapped_rows):
                 row_tags = []
@@ -595,10 +596,9 @@ class App(tk.Tk):
                 row_tags.append(bg_tag)
                 
                 # Foreground color logic for favorites
-                # r[0] is Mark, r[3] is Position (index shifted by Trend)
                 if r[0] == '☑':
                     try:
-                        rank_val = float(r[3])
+                        rank_val = float(r[4])
                         if rank_val <= 3:
                             row_tags.append('fav_top3')
                         elif 21 <= rank_val <= 30:
@@ -607,10 +607,6 @@ class App(tk.Tk):
                             row_tags.append('fav_gt31')
                     except (ValueError, TypeError):
                         pass
-
-                # Trend tag (added AFTER favorites so it overrides color)
-                if '▲' in str(r[2]) or '▼' in str(r[2]):
-                    row_tags.append('trend_blue')
                 
                 tree.insert('', tk.END, values=r, tags=tuple(row_tags))
         except Exception:
@@ -631,25 +627,25 @@ class App(tk.Tk):
             total_impr_for_weight = 0.0
 
             for r in mapped_rows:
-                # clicks (col 5), impressions (col 6), position (col 3) - shifted due to Mark, Trend
+                # clicks (col 6), impressions (col 7), position (col 4) - shifted due to Mark, Trend, Change
                 c_val = 0.0
                 im_val = 0.0
                 p_val = 0.0
                 
                 try:
-                    c = str(r[5]).replace(',', '')
+                    c = str(r[6]).replace(',', '')
                     c_val = float(c) if c != '' else 0.0
                     total_clicks += c_val
                 except Exception:
                     pass
                 try:
-                    im = str(r[6]).replace(',', '')
+                    im = str(r[7]).replace(',', '')
                     im_val = float(im) if im != '' else 0.0
                     total_impr += im_val
                 except Exception:
                     pass
                 try:
-                    p = float(str(r[3]).replace(',', ''))
+                    p = float(str(r[4]).replace(',', ''))
                     p_val = p
                     pos_vals.append(p)
                 except Exception:
@@ -899,13 +895,6 @@ class App(tk.Tk):
                             tags.append('fav_gt31')
                     except (ValueError, TypeError):
                         pass
-
-                # Restore trend styling (AFTER favorites)
-                try:
-                    trend_val = str(self.tree.set(k, '趨勢'))
-                    if '▲' in trend_val or '▼' in trend_val:
-                        tags.append('trend_blue')
-                except: pass
                 self.tree.item(k, tags=tuple(tags))
             # update heading indicator
             try:
@@ -944,12 +933,13 @@ class App(tk.Tk):
                     
                     # Update tags immediately
                     current_tags = list(self.tree.item(row_id, 'tags'))
-                    # Remove old color tags
-                    # Remove trend_blue if present to re-append at end
-                    has_trend = 'trend_blue' in current_tags
-                    if has_trend:
-                        current_tags.remove('trend_blue')
+                    
+                    # Remove old favorite tags
+                    for tag in ['fav_top3', 'fav_21_30', 'fav_gt31']:
+                        if tag in current_tags:
+                            current_tags.remove(tag)
 
+                    # Add favorite tags if marked
                     if new_val == '☑':
                         try:
                             rank_val = float(self.tree.set(row_id, '排名'))
@@ -961,10 +951,6 @@ class App(tk.Tk):
                                 current_tags.append('fav_gt31')
                         except (ValueError, TypeError):
                             pass
-                    
-                    # Re-append trend_blue so it stays on top
-                    if has_trend:
-                        current_tags.append('trend_blue')
 
                     self.tree.item(row_id, tags=tuple(current_tags))
                     
@@ -1034,15 +1020,59 @@ class App(tk.Tk):
                 # Hide operator and entry for cleaner UI
                 self.op_combo.grid_remove()
                 self.val_entry.grid_remove()
+                if hasattr(self, 'trend_combo'):
+                    self.trend_combo.grid_remove()
+                if hasattr(self, 'sign_combo'):
+                    self.sign_combo.grid_remove()
                 
                 self.filter_val_var.set('☑') # Auto-fill for clarity
                 # Auto-apply filter immediately
                 self.apply_filter()
             except: pass
             return
+        
+        # Handle Trend column - show dropdown with ▲/X options
+        if col == '趨勢':
+            try:
+                self.op_combo.grid_remove()
+                self.val_entry.grid_remove()
+                if hasattr(self, 'sign_combo'):
+                    self.sign_combo.grid_remove()
+                
+                # Create trend dropdown if not exists
+                if not hasattr(self, 'trend_combo'):
+                    self.trend_var = tk.StringVar(value='▲')
+                    self.trend_combo = ttk.Combobox(self.filter_frame, textvariable=self.trend_var, 
+                                                    values=['▲', 'X'], state='readonly', width=10)
+                
+                self.trend_combo.grid(row=0, column=3, padx=4)
+            except: pass
+            return
+        
+        # Handle Change column - show +/- dropdown before input
+        if col == '變化':
+            try:
+                self.op_combo.grid_remove()
+                if hasattr(self, 'trend_combo'):
+                    self.trend_combo.grid_remove()
+                
+                # Create sign dropdown if not exists
+                if not hasattr(self, 'sign_combo'):
+                    self.sign_var = tk.StringVar(value='+')
+                    self.sign_combo = ttk.Combobox(self.filter_frame, textvariable=self.sign_var,
+                                                   values=['+', '-'], state='readonly', width=5)
+                
+                self.sign_combo.grid(row=0, column=2, padx=2)
+                self.val_entry.grid(row=0, column=3, padx=4)
+            except: pass
+            return
 
         # Restore visibility for other columns
         try:
+            if hasattr(self, 'trend_combo'):
+                self.trend_combo.grid_remove()
+            if hasattr(self, 'sign_combo'):
+                self.sign_combo.grid_remove()
             self.op_combo.grid()
             self.val_entry.grid()
         except: pass
@@ -1069,6 +1099,19 @@ class App(tk.Tk):
         if col == '標記':
              # Allow empty val_str because we auto-set it, but if user cleared it, assume they want ☑
              val_str = '☑'
+        elif col == '趨勢':
+            # For Trend column, get value from dropdown
+            if hasattr(self, 'trend_var'):
+                val_str = self.trend_var.get()
+            else:
+                return
+        elif col == '變化':
+            # For Change column, combine sign + value
+            if hasattr(self, 'sign_var') and val_str:
+                sign = self.sign_var.get()
+                val_str = sign + val_str
+            elif not val_str:
+                return
         elif val_str == '':
             return
 
@@ -1083,6 +1126,10 @@ class App(tk.Tk):
                 
                 if col == '標記':
                     if cell_val == '☑':
+                        filtered.append(r)
+                elif col == '趨勢' or col == '變化':
+                    # Exact match for Trend and Change
+                    if val_str in cell_val:
                         filtered.append(r)
                 elif col == '關鍵字' or not is_numeric:
                     if val_str in cell_val.lower():
@@ -1106,9 +1153,11 @@ class App(tk.Tk):
                 self.tree.delete(it)
             for idx, r in enumerate(filtered):
                 tags = ['even' if idx % 2 == 0 else 'odd']
+                
+                # Foreground color logic for favorites
                 if r[0] == '☑':
                     try:
-                        rank_val = float(r[3]) # Rank is now index 3
+                        rank_val = float(r[4])
                         if rank_val <= 3:
                             tags.append('fav_top3')
                         elif 21 <= rank_val <= 30:
@@ -1116,10 +1165,7 @@ class App(tk.Tk):
                         elif rank_val >= 31:
                             tags.append('fav_gt31')
                     except: pass
-
-                # Trend tag (AFTER favorites)
-                if len(r) > 2 and ('▲' in str(r[2]) or '▼' in str(r[2])):
-                    tags.append('trend_blue')
+                
                 self.tree.insert('', tk.END, values=r, tags=tuple(tags))
             self.append_log(f'已套用篩選：{col} {op if is_numeric else "包含"} "{val_str}"（{len(filtered)} 筆）')
         except Exception as e:
@@ -1131,9 +1177,11 @@ class App(tk.Tk):
                 self.tree.delete(it)
             for idx, r in enumerate(self.current_rows):
                 tags = ['even' if idx % 2 == 0 else 'odd']
+                
+                # Foreground color logic for favorites
                 if r[0] == '☑':
                     try:
-                        rank_val = float(r[3]) # Rank is now index 3
+                        rank_val = float(r[4])
                         if rank_val <= 3:
                             tags.append('fav_top3')
                         elif 21 <= rank_val <= 30:
@@ -1141,10 +1189,7 @@ class App(tk.Tk):
                         elif rank_val >= 31:
                             tags.append('fav_gt31')
                     except: pass
-
-                # Trend tag (AFTER favorites)
-                if len(r) > 2 and ('▲' in str(r[2]) or '▼' in str(r[2])):
-                    tags.append('trend_blue')
+                
                 self.tree.insert('', tk.END, values=r, tags=tuple(tags))
             self.filter_val_var.set('')
             self.append_log('已清除篩選')

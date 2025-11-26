@@ -1,8 +1,8 @@
-# KeywordTools V1.3
+# KeywordTools V1.4
 
 > Google Search Console 關鍵字分析工具
 
-[![Version](https://img.shields.io/badge/version-1.3-blue.svg)](https://github.com/colinjen88/KeywordTools)
+[![Version](https://img.shields.io/badge/version-1.4-blue.svg)](https://github.com/colinjen88/KeywordTools)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
@@ -16,8 +16,8 @@ KeywordTools 是一個專業的 Google Search Console (GSC) 關鍵字分析工�
 
 - 🔍 **GSC 數據查詢**: 批量查詢關鍵字的點擊、曝光、排名等數據
 - 📊 **數據分析**: 自動計算統計數據（平均排名、總點擊等）
-- 📈 **趨勢分析**: 自動比較前月排名，顯示排名升降趨勢 (▲/▼)
-- 🎯 **智能篩選**: 支持多種篩選條件（關鍵字、排名、點擊等）
+- 📈 **趨勢分析**: 自動比較前月排名，顯示排名升降趨勢 (▲/X) 和變化數值
+- 🎯 **智能篩選**: 支持多種篩選條件（關鍵字、排名、點擊、趨勢、變化等）
 - ⭐ **收藏管理**: 標記和管理重要關鍵字
 - 📤 **多格式導出**: 支持 CSV 和 Excel 格式
 - 🎨 **現代化 UI**: 使用 ttkbootstrap 提供美觀的深色主題
