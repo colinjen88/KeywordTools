@@ -234,40 +234,29 @@ def write_output(output_path, rows):
             writer.writerow(r)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--property", required=True, help="Search Console property URL, e.g. https://example.com")
-    parser.add_argument("--keywords", required=True, help="CSV 檔，第一欄為關鍵字 (no header required)")
-    parser.add_argument("--start-date", required=True, help="YYYY-MM-DD")
-    parser.add_argument("--end-date", required=True, help="YYYY-MM-DD")
-    parser.add_argument("--service-account", default=None, help="service account JSON 路徑 (可選)。若未提供，可透過環境變數 GSC_SERVICE_ACCOUNT 指定路徑")
-    parser.add_argument("--delegated-user", default=None, help="若使用 service account 並需委派，填入被委派的帳號 email")
-    parser.add_argument("--oauth-client", default=None, help="OAuth client_secret.json，若不使用 service account 可提供此檔進行 OAuth Flow")
-    parser.add_argument("--row-limit", type=int, default=25000, help="bulk 查詢的 rowLimit (預設 25000)")
-    parser.add_argument("--output", default="gsc_keyword_report.csv", help="輸出 CSV 檔名")
-    parser.add_argument("--mock", action="store_true", help="不呼叫 GSC API，使用隨機數據產生樣本報表（方便測試）")
-    args = parser.parse_args()
-
+def run_report(property_url, keywords_file, start_date, end_date, output_file, 
+               service_account=None, oauth_client=None, delegated_user=None, 
+               row_limit=25000, mock=False):
+    """
+    執行報表產生的主邏輯，供外部 (如 GUI) 直接呼叫。
+    """
     service = None
     creds = None
-    if not args.mock:
-        creds = authenticate(args.service_account, args.delegated_user, args.oauth_client)
+    if not mock:
+        creds = authenticate(service_account, delegated_user, oauth_client)
         service = build("searchconsole", "v1", credentials=creds)
 
     print("載入關鍵字清單...")
-    keywords = load_keywords(args.keywords)
-    print(f"載入 {len(keywords)} 個關鍵字")
-    print("載入關鍵字清單...")
-    keywords = load_keywords(args.keywords)
+    keywords = load_keywords(keywords_file)
     print(f"載入 {len(keywords)} 個關鍵字")
 
     # 1. Fetch current range data
-    current_data = fetch_all_data(service, args.property, args.start_date, args.end_date, keywords, args.row_limit, args.mock)
+    current_data = fetch_all_data(service, property_url, start_date, end_date, keywords, row_limit, mock)
     
     # 2. Fetch previous month data
     prev_start, prev_end = get_prev_month_range()
     print(f"準備查詢前月數據 ({prev_start} ~ {prev_end})...")
-    prev_data = fetch_all_data(service, args.property, prev_start, prev_end, keywords, args.row_limit, args.mock)
+    prev_data = fetch_all_data(service, property_url, prev_start, prev_end, keywords, row_limit, mock)
 
     # 3. Merge results
     out_rows = []
@@ -284,9 +273,37 @@ def main():
             "found_by": curr.get("found_by", "none")
         })
 
-    print(f"寫出結果到 {args.output} ...")
-    write_output(args.output, out_rows)
+    print(f"寫出結果到 {output_file} ...")
+    write_output(output_file, out_rows)
     print("完成。可用 Excel 或 pandas 開啟 CSV。")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--property", required=True, help="Search Console property URL, e.g. https://example.com")
+    parser.add_argument("--keywords", required=True, help="CSV 檔，第一欄為關鍵字 (no header required)")
+    parser.add_argument("--start-date", required=True, help="YYYY-MM-DD")
+    parser.add_argument("--end-date", required=True, help="YYYY-MM-DD")
+    parser.add_argument("--service-account", default=None, help="service account JSON 路徑 (可選)。若未提供，可透過環境變數 GSC_SERVICE_ACCOUNT 指定路徑")
+    parser.add_argument("--delegated-user", default=None, help="若使用 service account 並需委派，填入被委派的帳號 email")
+    parser.add_argument("--oauth-client", default=None, help="OAuth client_secret.json，若不使用 service account 可提供此檔進行 OAuth Flow")
+    parser.add_argument("--row-limit", type=int, default=25000, help="bulk 查詢的 rowLimit (預設 25000)")
+    parser.add_argument("--output", default="gsc_keyword_report.csv", help="輸出 CSV 檔名")
+    parser.add_argument("--mock", action="store_true", help="不呼叫 GSC API，使用隨機數據產生樣本報表（方便測試）")
+    args = parser.parse_args()
+
+    run_report(
+        property_url=args.property,
+        keywords_file=args.keywords,
+        start_date=args.start_date,
+        end_date=args.end_date,
+        output_file=args.output,
+        service_account=args.service_account,
+        oauth_client=args.oauth_client,
+        delegated_user=args.delegated_user,
+        row_limit=args.row_limit,
+        mock=args.mock
+    )
 
 
 if __name__ == "__main__":

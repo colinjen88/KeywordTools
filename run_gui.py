@@ -145,6 +145,11 @@ class App(tk.Tk):
 
         current_row += 1
 
+        # === Separator ===
+        sep = ttk.Separator(frm, orient='horizontal')
+        sep.grid(row=current_row, column=0, columnspan=4, sticky='ew', padx=8, pady=(8,8))
+        current_row += 1
+
         # === Row 2: 可摺疊設定區塊 ===
         self.settings_expanded = tk.BooleanVar(value=False)  # 預設摺疊
         
@@ -1693,63 +1698,63 @@ class App(tk.Tk):
                 script_exit_code = 1  # 預設為失敗
 
                 try:
-                    import importlib, io, traceback
-                    module = importlib.import_module('gsc_keyword_report')
-                    imported_cli = True
-                except Exception as ex:
-                    module = None
-                    imported_cli = False
-                    err_tb = traceback.format_exc()
-                    self.append_log('無法 import gsc_keyword_report，將 fallback 到 subprocess；錯誤詳情:\n' + err_tb)
-                
-                if imported_cli:
+                    import io, traceback
+                    # 嘗試 import gsc_keyword_report
+                    # 由於這是在 thread 中，import 是安全的
+                    import gsc_keyword_report
+                    
+                    # 準備參數
+                    kwargs = {
+                        'property_url': prop,
+                        'keywords_file': kws,
+                        'start_date': start,
+                        'end_date': end,
+                        'output_file': out,
+                        'service_account': sa_path,
+                        'row_limit': 25000,
+                        'mock': False, # GUI 不支援 mock 選項 UI，預設關閉
+                        'oauth_client': None,
+                        'delegated_user': None
+                    }
+
+                    # 定義線程安全的 Logger 以實現即時輸出
+                    class ThreadSafeWriter:
+                        def __init__(self, app_ref):
+                            self.app = app_ref
+                        def write(self, s):
+                            if s:
+                                # 將日誌追加請求發送到主線程隊列，避免阻塞或卡頓
+                                self.app.after(0, lambda: self.app.append_log(s))
+                        def flush(self):
+                            pass
+                    
+                    writer = ThreadSafeWriter(self)
+                    old_stdout, old_stderr = sys.stdout, sys.stderr
                     try:
-                        old_argv = sys.argv
-                        sys.argv = [old_argv[0]] + cli_args
-                        buf_out = io.StringIO()
-                        buf_err = io.StringIO()
-                        old_stdout, old_stderr = sys.stdout, sys.stderr
-                        try:
-                            sys.stdout, sys.stderr = buf_out, buf_err
-                            try:
-                                module.main()
-                                script_exit_code = 0  # 執行成功
-                            except SystemExit as e:
-                                code = getattr(e, "code", 1)
-                                self.append_log(f'gsc_keyword_report exited with code: {code}')
-                                script_exit_code = code if code is not None else 1
-                        finally:
-                            sys.stdout, sys.stderr = old_stdout, old_stderr
-                            sys.argv = old_argv
-                        out_text = buf_out.getvalue()
-                        err_text = buf_err.getvalue()
-                        if out_text:
-                            self.append_log(out_text)
-                        if err_text:
-                            self.append_log(err_text)
-                        outputs.append(out)
+                        sys.stdout = writer
+                        sys.stderr = writer
+                        
+                        # 直接呼叫函數
+                        gsc_keyword_report.run_report(**kwargs)
+                        script_exit_code = 0
                     except Exception as e:
-                        self.append_log('無法以模組方式執行 CLI: ' + str(e))
-                        script_exit_code = 1 # 執行失敗
-                
-                if not imported_cli:
-                    interpreter = sys.executable
-                    script_path = SCRIPT
-                    if not os.path.exists(script_path):
-                        candidate = os.path.join(getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)), SCRIPT) if getattr(sys, 'frozen', False) else None
-                        if candidate and os.path.exists(candidate):
-                            script_path = candidate
-                    cmd = [interpreter, script_path] + cli_args
-                    kwargs = {'capture_output': True, 'text': True, 'encoding': 'utf-8'}
-                    if os.name == 'nt':
-                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                    self.append_log('執行: ' + ' '.join(cmd))
-                    proc = subprocess.run(cmd, **kwargs)
-                    self.append_log(proc.stdout)
-                    if proc.stderr:
-                        self.append_log(proc.stderr)
+                        # 恢復 stdout 以便打印到控制台作爲備份
+                        sys.stdout, sys.stderr = old_stdout, old_stderr
+                        traceback.print_exc()
+                        self.append_log(f'\n❌ 執行發生錯誤: {e}\n')
+                        self.append_log(traceback.format_exc())
+                        script_exit_code = 1
+                    finally:
+                        sys.stdout, sys.stderr = old_stdout, old_stderr
+                    
                     outputs.append(out)
-                    script_exit_code = proc.returncode
+
+                except ImportError as ie:
+                    self.append_log(f'❌ 嚴重錯誤: 無法導入 gsc_keyword_report 模組。這可能是打包問題。\n{ie}')
+                    script_exit_code = 1
+                except Exception as ex:
+                    self.append_log(f'❌ 執行失敗: {ex}')
+                    script_exit_code = 1
 
                 if script_exit_code == 0:
                     any_success = False
