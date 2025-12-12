@@ -77,10 +77,10 @@ if ($IconPath -and (Test-Path $IconPath)) {
 }
 
 # Add any data files that should be packaged (eg CSV templates) - format: src;dest (Windows uses ;)
-# Example: --add-data "allKeyWord_normalized.csv;."
+# Example: --add-data "data/keywords/allKeyWord.csv;data/keywords"
 # default include of sample CSV and keyword lists (do NOT include service account keys)
-$pyArgs += "--add-data"; $pyArgs += "allKeyWord_normalized.csv;."
-$pyArgs += "--add-data"; $pyArgs += "gsc_keyword_report_sample.csv;."
+$pyArgs += "--add-data"; $pyArgs += "data/keywords/allKeyWord.csv;data/keywords"
+$pyArgs += "--add-data"; $pyArgs += "data/samples/gsc_keyword_report_sample.csv;data/samples"
 # include the CLI script so frozen exe can spawn or import it
 $pyArgs += "--add-data"; $pyArgs += "gsc_keyword_report.py;."
 
