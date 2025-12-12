@@ -50,7 +50,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("GSC Keyword Reporter - GUI")
         # increase window width & height to show all elements
-        self.geometry("900x1100")
+        self.geometry("900x900")
 
         frm = ttk.Frame(self, padding=12)
         frm.pack(fill=tk.BOTH, expand=True)
@@ -151,7 +151,7 @@ class App(tk.Tk):
         settings_header = ttk.Frame(frm)
         settings_header.grid(row=current_row, column=0, columnspan=4, sticky=tk.W, padx=(8,8), pady=(8,4))
         
-        self.toggle_settings_btn = ttk.Button(settings_header, text="▶ 進階設定", command=self.toggle_settings, width=12)
+        self.toggle_settings_btn = ttk.Button(settings_header, text="▶ 打開設定", command=self.toggle_settings, width=12)
         self.toggle_settings_btn.pack(side=tk.LEFT)
         
         current_row += 1
@@ -189,20 +189,19 @@ class App(tk.Tk):
         # 輸出格式
         self.format_var = tk.StringVar(value='CSV')
 
+        # Log 區域放在設定區塊內
+        ttk.Label(self.settings_frame, text="執行日誌：", style='Uniform.TLabel').grid(row=4, column=0, sticky=tk.NW, padx=(4,8), pady=(8,4))
+        self.log = tk.Text(self.settings_frame, height=10, width=70)  # 高度縮小為 1/3
+        self.log.grid(row=4, column=1, columnspan=2, sticky=tk.EW, padx=(4,8), pady=(4,4))
+
         # 預設摺疊設定區塊
         self.settings_frame.grid_remove()
 
         current_row += 1
 
-        # === Row 4: Log 區域 (高度增加5倍，從 height=18 改為 height=90) ===
         # keep legacy run_btn for compatibility (hidden)
         self.run_btn = ttk.Button(frm, text="執行報表", command=self.on_run)
         self.run_btn.grid_forget()
-
-        self.log = tk.Text(frm, height=30)  # 增加高度 (原本18，增加到30)
-        self.log.grid(row=current_row, column=0, columnspan=4, padx=(8,8), pady=(8,8), sticky=tk.NSEW)
-        frm.rowconfigure(current_row, weight=1)
-        frm.columnconfigure(3, weight=1)
 
         current_row += 1
 
@@ -228,7 +227,7 @@ class App(tk.Tk):
         # === Row 7: 表格區塊 (高度增加60px) ===
         self.table_frame = ttk.Frame(frm)
         self.table_frame.grid(row=current_row, column=0, columnspan=4, sticky=tk.NSEW, padx=(8,8), pady=(8,8))
-        frm.rowconfigure(current_row, weight=2)  # 給表格更多空間
+        frm.rowconfigure(current_row, weight=1)  # 表格區塊
 
         # create a persistent stats label at the top of the table_frame
         try:
@@ -289,6 +288,13 @@ class App(tk.Tk):
         self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV', variable=self.autoload_var)
         self.autoload_cb.grid(row=0, column=5, padx=(8,8), pady=(0,0))
 
+        # 「開始查詢」按鈕 - 在底部按鈕列
+        if USE_TTB:
+            self.run_btn_big = tb.Button(btn_frame, text='開始查詢', command=self.on_run, bootstyle='success', width=12)
+        else:
+            self.run_btn_big = ttk.Button(btn_frame, text='開始查詢', command=self.on_run, style='Wide.TButton', width=12)
+        self.run_btn_big.grid(row=0, column=6, padx=(16,0), pady=(0,0))
+
         current_row += 1
 
         # === Row 9: Version info ===
@@ -326,11 +332,11 @@ class App(tk.Tk):
         """展開/摺疊設定區塊"""
         if self.settings_expanded.get():
             self.settings_frame.grid_remove()
-            self.toggle_settings_btn.configure(text="▶ 進階設定")
+            self.toggle_settings_btn.configure(text="▶ 打開設定")
             self.settings_expanded.set(False)
         else:
             self.settings_frame.grid()
-            self.toggle_settings_btn.configure(text="▼ 進階設定")
+            self.toggle_settings_btn.configure(text="▼ 收起設定")
             self.settings_expanded.set(True)
 
     def load_pinned_sa(self):
