@@ -40,8 +40,8 @@ def normalize(in_path, out_path):
 
 
 if __name__ == "__main__":
-    in_path = "allKeyWord.csv"
-    out_path = "allKeyWord_normalized.csv"
+    in_path = "data/keywords/allKeyWord.csv"
+    out_path = "data/keywords/allKeyWord_normalized.csv"
     if len(sys.argv) >= 2:
         in_path = sys.argv[1]
     if len(sys.argv) >= 3:

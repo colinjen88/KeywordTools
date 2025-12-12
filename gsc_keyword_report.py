@@ -135,16 +135,18 @@ def fetch_exact_query(service, site_url, start_date, end_date, keyword):
 
 
 def load_keywords(path):
-    # 修正：處理好多列的逗號分隔關鍵字
+    # 讀取關鍵字：CSV 每個欄位都當作一個關鍵字
     kws = []
     with open(path, newline="", encoding="utf-8-sig") as fh:
         reader = csv.reader(fh)
         for row in reader:
             if not row:
                 continue
-            # 對每一列的第一個元素進行逗號切分
-            parts = [p.strip() for p in row[0].split(',') if p.strip()]
-            kws.extend(parts)
+            # CSV reader 已經把逗號分隔的內容拆成多個欄位，直接讀取所有欄位
+            for cell in row:
+                cell = cell.strip()
+                if cell:
+                    kws.append(cell)
     return kws
 
 

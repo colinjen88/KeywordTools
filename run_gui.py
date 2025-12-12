@@ -161,7 +161,7 @@ class App(tk.Tk):
         self.update_preset_visuals("日期區間")
 
         ttk.Label(frm, text="關鍵字檔案：", style='Uniform.TLabel').grid(row=3, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
-        self.kws_var = tk.StringVar(value="allKeyWord_normalized.csv")
+        self.kws_var = tk.StringVar(value="data/keywords/allKeyWord.csv")
         ttk.Entry(frm, textvariable=self.kws_var, width=40, style='Uniform.TEntry').grid(row=3, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
         ttk.Button(frm, text="Browse", command=self.browse_kws, style='Uniform.TButton').grid(row=3, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
 
@@ -445,6 +445,15 @@ class App(tk.Tk):
                 continue
         if not used_encoding:
             raise ValueError('無法開啟 CSV：不支援的編碼或檔案已損毀')
+
+        # Validate CSV format - prevent UI freeze from too many columns
+        MAX_COLUMNS = 50
+        if len(header) > MAX_COLUMNS:
+            # This likely means the CSV is malformed (e.g., all keywords on one comma-separated line)
+            self.append_log(f'⚠ CSV 格式異常：偵測到 {len(header)} 個欄位，超過 {MAX_COLUMNS} 個上限。')
+            self.append_log(f'  這可能表示 CSV 檔案格式錯誤（所有關鍵字在同一行以逗號分隔）。')
+            self.append_log(f'  請確認 CSV 格式正確，每行一個關鍵字，並包含標題行。')
+            raise ValueError(f'CSV 欄位數異常 ({len(header)} 欄)，可能是格式錯誤。請檢查 CSV 檔案。')
 
         # clear existing
         self.clear_table()
@@ -755,8 +764,8 @@ class App(tk.Tk):
     def load_favorites(self):
         self.favorites = set()
         try:
-            if os.path.exists('favorites.json'):
-                with open('favorites.json', 'r', encoding='utf-8') as f:
+            if os.path.exists('config/favorites.json'):
+                with open('config/favorites.json', 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if isinstance(data, list):
                         self.favorites = set(data)
@@ -765,7 +774,7 @@ class App(tk.Tk):
 
     def save_favorites(self):
         try:
-            with open('favorites.json', 'w', encoding='utf-8') as f:
+            with open('config/favorites.json', 'w', encoding='utf-8') as f:
                 json.dump(list(self.favorites), f, ensure_ascii=False, indent=2)
         except Exception:
             pass
@@ -835,7 +844,9 @@ class App(tk.Tk):
             self.filter_frame.grid(row=1, column=0, sticky='ew', pady=(0,4))
             ttk.Label(self.filter_frame, text='欄位篩選：').grid(row=0, column=0, sticky=tk.W)
             
-            self.filter_col_var = tk.StringVar(value=self.current_columns[0] if self.current_columns else '')
+            # Default to '關鍵字' column instead of '標記' to avoid auto-filtering on load
+            default_col = '關鍵字' if '關鍵字' in self.current_columns else (self.current_columns[1] if len(self.current_columns) > 1 else self.current_columns[0] if self.current_columns else '')
+            self.filter_col_var = tk.StringVar(value=default_col)
             col_combo = ttk.Combobox(self.filter_frame, textvariable=self.filter_col_var, values=self.current_columns, state='readonly', width=12)
             col_combo.grid(row=0, column=1, padx=4)
             col_combo.bind('<<ComboboxSelected>>', self.on_filter_col_change)
@@ -1600,7 +1611,8 @@ class App(tk.Tk):
                             any_success = True
                             if f.lower().endswith('.csv'):
                                 try:
-                                    self.load_csv_into_table(f)
+                                    # Use after() to update UI on main thread (Tkinter is not thread-safe)
+                                    self.after(0, lambda path=f: self.load_csv_into_table(path))
                                 except Exception as e:
                                     self.append_log('Failed to load CSV into table: ' + str(e))
                         else:
