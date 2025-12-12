@@ -49,16 +49,36 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("GSC Keyword Reporter - GUI")
-        # increase window width & height to show all elements
-        self.geometry("900x1100")
+        # increase window width & height slightly to show all elements
+        self.geometry("780x960")
 
         frm = ttk.Frame(self, padding=12)
         frm.pack(fill=tk.BOTH, expand=True)
 
+        # layout constants
+        ELEMENT_GAP = 16  # pixels between elements
+        LINE_HEIGHT = 16   # fixed row height (改為 16px)
+
+
+
+        # enforce fixed row height for rows we will use (0..13)
+        for r in range(0, 14):
+            try:
+                frm.rowconfigure(r, minsize=LINE_HEIGHT)
+            except Exception:
+                pass
+        # make column 2 (between start and end inputs) have a smaller min width to reduce large gaps
+        try:
+            frm.columnconfigure(2, minsize=0)
+        except Exception:
+            pass
+
+        # initialize ttkbootstrap Style bound to this root (avoid extra root)
         # initialize ttkbootstrap Style bound to this root (avoid extra root)
         if USE_TTB and tb is not None:
             try:
                 self.tb_style = tb.Style(master=self, theme='superhero')
+                # tweak some defaults
                 self.tb_style.configure('TLabel', font=('Segoe UI', 10))
                 self.tb_style.configure('TEntry', font=('Segoe UI', 10))
                 self.tb_style.configure('TButton', font=('Segoe UI', 10))
@@ -80,8 +100,6 @@ class App(tk.Tk):
             style.map('Preset.TButton', background=[('active', '#e0e0e0')], foreground=[('active', '#1565c0')])
             style.configure('Selected.Preset.TButton', font=('Segoe UI', 10), padding=(6, 4), background='#1565c0', foreground='white')
             style.map('Selected.Preset.TButton', background=[('active', '#0d47a1')], foreground=[('active', 'white')])
-            # Wide button style for 開始查詢
-            style.configure('Wide.TButton', font=('Segoe UI', 11, 'bold'), padding=(20, 8))
         except Exception:
             style = None
         
@@ -90,18 +108,19 @@ class App(tk.Tk):
         # sort state per column: True = descending, False = ascending
         self.sort_state = {}
         # favorites set (stores keywords)
+        # favorites set (stores keywords)
         self.load_favorites()
         # link id counter for log file links
         self._link_count = 0
-        # pinned SA path
-        self.pinned_sa_path = self.load_pinned_sa()
 
-        current_row = 0
+        ttk.Label(frm, text="Search Console 屬性 (URL)：", style='Uniform.TLabel').grid(row=0, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        self.property_var = tk.StringVar(value="https://pm.shiny.com.tw/")
+        ttk.Entry(frm, textvariable=self.property_var, width=60, style='Uniform.TEntry').grid(row=0, column=1, columnspan=3, sticky=tk.W, padx=(8,8), pady=(8,8))
 
-        # === Row 0: 日期區間 ===
-        ttk.Label(frm, text="日期區間（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=current_row, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Label(frm, text="日期區間（YYYY-MM-DD)：", style='Uniform.TLabel').grid(row=1, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        # Date Range Frame to ensure tight spacing
         date_range_frame = ttk.Frame(frm)
-        date_range_frame.grid(row=current_row, column=1, columnspan=3, sticky=tk.W, padx=(4,8), pady=(8,8))
+        date_range_frame.grid(row=1, column=1, columnspan=3, sticky=tk.W, padx=(4,8), pady=(8,8))
 
         self.start_var = tk.StringVar(value=(date.today() - timedelta(days=30)).isoformat())
         if USE_TTB:
@@ -119,11 +138,9 @@ class App(tk.Tk):
         else:
             ttk.Entry(date_range_frame, textvariable=self.end_var, width=20, style='Uniform.TEntry').pack(side=tk.LEFT, padx=(0, 0))
 
-        current_row += 1
-
-        # === Row 1: 日期快選按鈕 ===
+        # preset ranges
         preset_frame = ttk.Frame(frm)
-        preset_frame.grid(row=current_row, column=1, columnspan=3, sticky=tk.W, padx=(8,8), pady=(0,8))
+        preset_frame.grid(row=2, column=1, columnspan=3, sticky=tk.W, padx=(8,8), pady=(0,0))
         
         self.preset_btns = {}
         presets = [
@@ -143,92 +160,63 @@ class App(tk.Tk):
             
         self.update_preset_visuals("日期區間")
 
-        current_row += 1
-
-        # === Row 2: 可摺疊設定區塊 ===
-        self.settings_expanded = tk.BooleanVar(value=False)  # 預設摺疊
-        
-        settings_header = ttk.Frame(frm)
-        settings_header.grid(row=current_row, column=0, columnspan=4, sticky=tk.W, padx=(8,8), pady=(8,4))
-        
-        self.toggle_settings_btn = ttk.Button(settings_header, text="▶ 進階設定", command=self.toggle_settings, width=12)
-        self.toggle_settings_btn.pack(side=tk.LEFT)
-        
-        current_row += 1
-
-        # === Row 3: 設定內容 (可摺疊) ===
-        self.settings_frame = ttk.LabelFrame(frm, text="設定", padding=8)
-        self.settings_frame.grid(row=current_row, column=0, columnspan=4, sticky=tk.EW, padx=(8,8), pady=(0,8))
-        
-        # Search Console 屬性 (URL)
-        ttk.Label(self.settings_frame, text="Search Console 屬性 (URL)：", style='Uniform.TLabel').grid(row=0, column=0, sticky=tk.W, padx=(4,8), pady=(4,4))
-        self.property_var = tk.StringVar(value="https://pm.shiny.com.tw/")
-        ttk.Entry(self.settings_frame, textvariable=self.property_var, width=50, style='Uniform.TEntry').grid(row=0, column=1, columnspan=2, sticky=tk.W, padx=(4,8), pady=(4,4))
-        
-        # 關鍵字檔案
-        ttk.Label(self.settings_frame, text="關鍵字檔案：", style='Uniform.TLabel').grid(row=1, column=0, sticky=tk.W, padx=(4,8), pady=(4,4))
+        ttk.Label(frm, text="關鍵字檔案：", style='Uniform.TLabel').grid(row=3, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.kws_var = tk.StringVar(value="data/keywords/allKeyWord.csv")
-        ttk.Entry(self.settings_frame, textvariable=self.kws_var, width=40, style='Uniform.TEntry').grid(row=1, column=1, sticky=tk.W, padx=(4,8), pady=(4,4))
-        ttk.Button(self.settings_frame, text="瀏覽", command=self.browse_kws, style='Uniform.TButton').grid(row=1, column=2, sticky=tk.W, padx=(4,8), pady=(4,4))
-        
-        # Service account JSON (with 釘選 button)
-        ttk.Label(self.settings_frame, text="Service account JSON：", style='Uniform.TLabel').grid(row=2, column=0, sticky=tk.W, padx=(4,8), pady=(4,4))
-        self.sa_var = tk.StringVar(value=self.pinned_sa_path if self.pinned_sa_path else "")
-        ttk.Entry(self.settings_frame, textvariable=self.sa_var, width=40, style='Uniform.TEntry').grid(row=2, column=1, sticky=tk.W, padx=(4,8), pady=(4,4))
-        
-        sa_btn_frame = ttk.Frame(self.settings_frame)
-        sa_btn_frame.grid(row=2, column=2, sticky=tk.W, padx=(4,8), pady=(4,4))
-        ttk.Button(sa_btn_frame, text="瀏覽", command=self.browse_sa, style='Uniform.TButton').pack(side=tk.LEFT, padx=(0,4))
-        ttk.Button(sa_btn_frame, text="📌 釘選", command=self.pin_sa, style='Uniform.TButton').pack(side=tk.LEFT)
-        
-        # 輸出檔名前綴
-        ttk.Label(self.settings_frame, text="輸出檔名前綴：", style='Uniform.TLabel').grid(row=3, column=0, sticky=tk.W, padx=(4,8), pady=(4,4))
+        ttk.Entry(frm, textvariable=self.kws_var, width=40, style='Uniform.TEntry').grid(row=3, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Button(frm, text="Browse", command=self.browse_kws, style='Uniform.TButton').grid(row=3, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
+
+        ttk.Label(frm, text="Service account JSON：", style='Uniform.TLabel').grid(row=4, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
+        self.sa_var = tk.StringVar(value="")
+        ttk.Entry(frm, textvariable=self.sa_var, width=40, style='Uniform.TEntry').grid(row=4, column=1, sticky=tk.W, padx=(8,8), pady=(8,8))
+        ttk.Button(frm, text="瀏覽", command=self.browse_sa, style='Uniform.TButton').grid(row=4, column=2, sticky=tk.W, padx=(8,8), pady=(8,8))
+
+        ttk.Label(frm, text="輸出檔名前綴：", style='Uniform.TLabel').grid(row=5, column=0, sticky=tk.W, padx=(8,8), pady=(8,8))
         self.outbase_var = tk.StringVar(value="gsc_keyword_report")
-        ttk.Entry(self.settings_frame, textvariable=self.outbase_var, width=30, style='Uniform.TEntry').grid(row=3, column=1, sticky=tk.W, padx=(4,8), pady=(4,4))
-        
-        # 輸出格式
+        ttk.Entry(frm, textvariable=self.outbase_var, width=30, style='Uniform.TEntry').grid(row=5, column=1, sticky=tk.W, padx=(8,8), pady=(2,2))
+
+        # 輸出格式已移至下方按鈕列，預設值保留
         self.format_var = tk.StringVar(value='CSV')
 
-        # 預設摺疊設定區塊
-        self.settings_frame.grid_remove()
-
-        current_row += 1
-
-        # === Row 4: Log 區域 (高度增加5倍，從 height=18 改為 height=90) ===
         # keep legacy run_btn for compatibility (hidden)
         self.run_btn = ttk.Button(frm, text="執行報表", command=self.on_run)
+        # hide original small run_btn (we use larger one in button frame)
         self.run_btn.grid_forget()
 
-        self.log = tk.Text(frm, height=30)  # 增加高度 (原本18，增加到30)
-        self.log.grid(row=current_row, column=0, columnspan=4, padx=(8,8), pady=(8,8), sticky=tk.NSEW)
-        frm.rowconfigure(current_row, weight=1)
+        self.log = tk.Text(frm, height=18)
+        self.log.grid(row=8, column=0, columnspan=4, padx=(8,8), pady=(8,8), sticky=tk.NSEW)
+        frm.rowconfigure(8, weight=1)
         frm.columnconfigure(3, weight=1)
 
-        current_row += 1
-
-        # === Row 5: 結果狀態 ===
+        # results frame
+        # create a results frame to hold status and Results label on one line
         results_frame = ttk.Frame(frm)
-        results_frame.grid(row=current_row, column=0, columnspan=4, sticky=tk.W, padx=(8,8), pady=(8,0))
+        results_frame.grid(row=9, column=0, columnspan=4, sticky=tk.W, padx=(8,8), pady=(8,0))
         self.status_var = tk.StringVar(value='待命')
-        ttk.Label(results_frame, text="結果：", style='Uniform.TLabel').pack(side='left')
+        # Results label first
+        try:
+            ttk.Label(results_frame, text="結果：", style='Uniform.TLabel').pack(side='left')
+        except Exception:
+            ttk.Label(results_frame, text="結果：", style='Uniform.TLabel').grid(row=0, column=0, sticky=tk.W)
+        # status text after results (no '狀態：' prefix)
         if USE_TTB:
             self.status_label = tb.Label(results_frame, text='待命', bootstyle='secondary', padding=(6,2))
         else:
             self.status_label = tk.Label(results_frame, text='待命', bg='#808080', fg='white', padx=8, pady=2)
-        self.status_label.pack(side='left', padx=(4,0))
-        self.progress = ttk.Progressbar(results_frame, mode='indeterminate', length=100)
+        try:
+            # keep Results label and status close together
+            self.status_label.pack(side='left', padx=(4,0))
+            self.progress = ttk.Progressbar(results_frame, mode='indeterminate', length=100)
+        except Exception:
+            self.status_label.grid(row=0, column=1, sticky=tk.W, padx=(8,0))
 
-        current_row += 1
-
-        # === Row 6: 統計資訊 ===
+        # statistics placeholder (will be placed inside the table_frame at its top)
         self.stats_line_var = tk.StringVar(value='關鍵字數: 0  |  總點擊: 0  |  總曝光: 0  |  平均排名: -')
 
-        current_row += 1
-
-        # === Row 7: 表格區塊 (高度增加60px) ===
+        # results table frame (table below results and stats)
         self.table_frame = ttk.Frame(frm)
-        self.table_frame.grid(row=current_row, column=0, columnspan=4, sticky=tk.NSEW, padx=(8,8), pady=(8,8))
-        frm.rowconfigure(current_row, weight=2)  # 給表格更多空間
+        self.table_frame.grid(row=11, column=0, columnspan=4, sticky=tk.NSEW, padx=(8,8), pady=(8,8))
+        frm.rowconfigure(10, weight=1)
+        frm.rowconfigure(11, weight=1)
 
         # create a persistent stats label at the top of the table_frame
         try:
@@ -240,20 +228,19 @@ class App(tk.Tk):
         self.tree = None
         self.current_rows = []
         self.current_columns = []
-        
-        # 「加入關鍵字總表」按鈕狀態
-        self.add_kw_btn = None
-        self.last_search_keyword = None
-
-        current_row += 1
-
-        # === Row 8: 底部按鈕列 ===
         btn_frame = ttk.Frame(frm)
-        btn_frame.grid(row=current_row, column=0, columnspan=4, sticky=tk.EW, padx=(8,8), pady=(8,8))
-        
-        # 格式選擇
+        btn_frame.grid(row=12, column=0, columnspan=4, sticky=tk.W, padx=(8,8), pady=(8,8))
+        # enlarge Run button style
         try:
-            self.fmt_combo_btn = ttk.Combobox(btn_frame, textvariable=self.format_var, values=['CSV', 'Excel (.xlsx)'], state='readonly', width=14, style='Uniform.TCombobox')
+            style = ttk.Style()
+            style.configure('Big.TButton', font=('Segoe UI', 10, 'bold'), padding=(12,8))
+        except Exception:
+            pass
+
+        # if ttkbootstrap is present, use its Button for nicer style
+        # format combobox placed to the left of the save button for clarity
+        try:
+            self.fmt_combo_btn = ttk.Combobox(btn_frame, textvariable=self.format_var, values=['CSV', 'Excel (.xlsx)'], state='readonly', width=18, style='Uniform.TCombobox')
             self.fmt_combo_btn.grid(row=0, column=0, padx=(0,8), pady=(0,0))
         except Exception:
             pass
@@ -263,7 +250,6 @@ class App(tk.Tk):
         else:
             self.save_btn = ttk.Button(btn_frame, text="輸出檔案", command=self.export_csv)
         self.save_btn.grid(row=0, column=1, padx=(0,8), pady=(0,0))
-        
         if USE_TTB:
             self.clear_btn = tb.Button(btn_frame, text="清除表格", command=self.clear_table, bootstyle='secondary')
         else:
@@ -284,18 +270,24 @@ class App(tk.Tk):
             self.export_fav_btn = ttk.Button(btn_frame, text="匯出收藏關鍵字", command=self.export_favorites)
         self.export_fav_btn.grid(row=0, column=4, padx=(0,8), pady=(0,0))
 
+        # Run button bigger and styled
+        if USE_TTB:
+            self.run_btn_big = tb.Button(btn_frame, text="執行報表", command=self.on_run, bootstyle='success')
+        else:
+            self.run_btn_big = ttk.Button(btn_frame, text="執行報表", command=self.on_run, style='Big.TButton')
+        self.run_btn_big.grid(row=0, column=5, padx=(12,8), pady=(0,0))
+
         # autoload toggle
         self.autoload_var = tk.BooleanVar(value=True)
-        self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV', variable=self.autoload_var)
-        self.autoload_cb.grid(row=0, column=5, padx=(8,8), pady=(0,0))
+        # clearer description for auto-load behavior
+        self.autoload_cb = ttk.Checkbutton(btn_frame, text='自動載入 CSV（偵測目錄中新產生的 CSV 並自動載入）', variable=self.autoload_var)
+        self.autoload_cb.grid(row=0, column=6, padx=(8,8), pady=(0,0))
 
-        current_row += 1
-
-        # === Row 9: Version info ===
+        # Version info at the bottom
         version_frame = ttk.Frame(frm)
-        version_frame.grid(row=current_row, column=0, columnspan=4, sticky=tk.E, padx=(8,8), pady=(4,8))
+        version_frame.grid(row=13, column=0, columnspan=4, sticky=tk.E, padx=(8,8), pady=(4,8))
         
-        version_label = tk.Label(version_frame, text='KeywordTools V1.5 Product by ', 
+        version_label = tk.Label(version_frame, text='KeywordTools V1.2 Product by ', 
                                 fg='#808080', font=('Segoe UI', 8))
         version_label.pack(side=tk.LEFT)
         
@@ -321,45 +313,6 @@ class App(tk.Tk):
             self.end_var.trace_add('write', _clear_preset)
         except Exception:
             pass
-
-    def toggle_settings(self):
-        """展開/摺疊設定區塊"""
-        if self.settings_expanded.get():
-            self.settings_frame.grid_remove()
-            self.toggle_settings_btn.configure(text="▶ 進階設定")
-            self.settings_expanded.set(False)
-        else:
-            self.settings_frame.grid()
-            self.toggle_settings_btn.configure(text="▼ 進階設定")
-            self.settings_expanded.set(True)
-
-    def load_pinned_sa(self):
-        """載入釘選的 Service Account JSON 路徑"""
-        try:
-            config_path = 'config/pinned_sa.json'
-            if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get('sa_path', '')
-        except Exception:
-            pass
-        return ''
-
-    def pin_sa(self):
-        """釘選當前的 Service Account JSON 路徑"""
-        sa_path = self.sa_var.get()
-        if not sa_path:
-            messagebox.showwarning('無路徑', '請先選擇 Service Account JSON 檔案')
-            return
-        try:
-            config_path = 'config/pinned_sa.json'
-            os.makedirs('config', exist_ok=True)
-            with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump({'sa_path': sa_path}, f, ensure_ascii=False, indent=2)
-            self.pinned_sa_path = sa_path
-            messagebox.showinfo('已釘選', f'已釘選 Service Account 路徑：\n{sa_path}')
-        except Exception as e:
-            messagebox.showerror('錯誤', f'釘選失敗：{e}')
 
     def on_preset_click(self, label, days):
         self.update_preset_visuals(label)
@@ -889,8 +842,6 @@ class App(tk.Tk):
                 self.filter_frame.destroy()
             self.filter_frame = ttk.Frame(self.table_frame)
             self.filter_frame.grid(row=1, column=0, sticky='ew', pady=(0,4))
-            self.filter_frame.columnconfigure(10, weight=1)  # 讓右側有彈性空間
-            
             ttk.Label(self.filter_frame, text='欄位篩選：').grid(row=0, column=0, sticky=tk.W)
             
             # Default to '關鍵字' column instead of '標記' to avoid auto-filtering on load
@@ -907,28 +858,8 @@ class App(tk.Tk):
             self.filter_val_var = tk.StringVar()
             self.val_entry = ttk.Entry(self.filter_frame, textvariable=self.filter_val_var, width=24)
             self.val_entry.grid(row=0, column=3, padx=4)
-            # 綁定 Enter 鍵進行篩選
-            self.val_entry.bind('<Return>', lambda e: self.apply_filter())
-            
             ttk.Button(self.filter_frame, text='套用', command=self.apply_filter).grid(row=0, column=4, padx=4)
             ttk.Button(self.filter_frame, text='清除', command=self.clear_filter).grid(row=0, column=5, padx=4)
-            
-            # 「加入關鍵字總表」按鈕 - 預設不可按
-            if USE_TTB:
-                self.add_kw_btn = tb.Button(self.filter_frame, text='加入關鍵字總表', command=self.add_to_keyword_list, bootstyle='warning-outline', state='disabled')
-            else:
-                self.add_kw_btn = ttk.Button(self.filter_frame, text='加入關鍵字總表', command=self.add_to_keyword_list, state='disabled')
-            self.add_kw_btn.grid(row=0, column=6, padx=(8,4))
-            
-            # 空白區填充
-            ttk.Frame(self.filter_frame).grid(row=0, column=10, sticky='ew')
-            
-            # 「開始查詢」按鈕 - 置右對齊，加寬
-            if USE_TTB:
-                self.query_btn = tb.Button(self.filter_frame, text='開始查詢', command=self.on_run, bootstyle='success', width=14)
-            else:
-                self.query_btn = ttk.Button(self.filter_frame, text='開始查詢', command=self.on_run, style='Wide.TButton', width=14)
-            self.query_btn.grid(row=0, column=11, padx=(4,0), sticky='e')
             
             self.on_filter_col_change()
         except Exception:
@@ -1248,24 +1179,6 @@ class App(tk.Tk):
                 
                 self.tree.insert('', tk.END, values=r, tags=tuple(tags))
             self.append_log(f'已套用篩選：{col} {op if is_numeric else "包含"} "{val_str}"（{len(filtered)} 筆）')
-            
-            # 控制「加入關鍵字總表」按鈕狀態
-            # 當篩選關鍵字欄位且查無結果時，啟用按鈕
-            if col == '關鍵字' and len(filtered) == 0 and val_str:
-                self.last_search_keyword = self.filter_val_var.get().strip()
-                if self.add_kw_btn:
-                    try:
-                        self.add_kw_btn.configure(state='normal')
-                    except:
-                        self.add_kw_btn['state'] = 'normal'
-            else:
-                self.last_search_keyword = None
-                if self.add_kw_btn:
-                    try:
-                        self.add_kw_btn.configure(state='disabled')
-                    except:
-                        self.add_kw_btn['state'] = 'disabled'
-                        
         except Exception as e:
             self.append_log('篩選失敗: ' + str(e))
 
@@ -1291,63 +1204,8 @@ class App(tk.Tk):
                 self.tree.insert('', tk.END, values=r, tags=tuple(tags))
             self.filter_val_var.set('')
             self.append_log('已清除篩選')
-            
-            # 清除篩選時也禁用加入按鈕
-            self.last_search_keyword = None
-            if self.add_kw_btn:
-                try:
-                    self.add_kw_btn.configure(state='disabled')
-                except:
-                    self.add_kw_btn['state'] = 'disabled'
-                    
         except Exception as e:
             self.append_log('清除篩選失敗: ' + str(e))
-
-    def add_to_keyword_list(self):
-        """將搜尋的關鍵字加入關鍵字總表 CSV"""
-        if not self.last_search_keyword:
-            messagebox.showwarning('無關鍵字', '沒有待加入的關鍵字')
-            return
-        
-        kw_file = self.kws_var.get()
-        if not kw_file:
-            messagebox.showerror('錯誤', '請先設定關鍵字檔案路徑')
-            return
-        
-        try:
-            # 讀取現有關鍵字
-            existing_keywords = set()
-            if os.path.exists(kw_file):
-                with open(kw_file, 'r', encoding='utf-8') as f:
-                    reader = csv.reader(f)
-                    for row in reader:
-                        if row:
-                            existing_keywords.add(row[0].strip())
-            
-            # 檢查是否已存在
-            if self.last_search_keyword in existing_keywords:
-                messagebox.showinfo('已存在', f'關鍵字「{self.last_search_keyword}」已在總表中')
-                return
-            
-            # 加入關鍵字
-            with open(kw_file, 'a', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([self.last_search_keyword])
-            
-            self.append_log(f'✅ 已將關鍵字「{self.last_search_keyword}」加入 {kw_file}')
-            messagebox.showinfo('成功', f'已將關鍵字「{self.last_search_keyword}」加入關鍵字總表')
-            
-            # 清除狀態
-            self.last_search_keyword = None
-            if self.add_kw_btn:
-                try:
-                    self.add_kw_btn.configure(state='disabled')
-                except:
-                    self.add_kw_btn['state'] = 'disabled'
-                    
-        except Exception as e:
-            self.append_log(f'加入關鍵字失敗: {e}')
-            messagebox.showerror('錯誤', f'加入關鍵字失敗：{e}')
 
     def on_tree_right_click(self, event):
         # show context menu for copy cell / export row
